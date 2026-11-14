@@ -60,8 +60,9 @@ type Answers = Record<string, { noul?: number; choice?: string; answer_confidenc
  * GPU through DirectML. Time is the rule detector (chrono + phrasings) OR Laya's time answer.
  * Scored on the fixture labels and on any facet labels in your test set.
  */
-export async function s4(opts: { testsetPath?: string; now?: Date } = {}): Promise<Omit<SpikeResult, "id" | "title" | "ms">> {
-  const labeled = loadLabeled(opts.testsetPath);
+export async function s4(opts: { testsetPath?: string; now?: Date; limit?: number } = {}): Promise<Omit<SpikeResult, "id" | "title" | "ms">> {
+  const all = loadLabeled(opts.testsetPath);
+  const labeled = opts.limit ? all.slice(0, opts.limit) : all;
   const now = opts.now ?? new Date();
   const { Laya } = await import("@receptron/laya");
 

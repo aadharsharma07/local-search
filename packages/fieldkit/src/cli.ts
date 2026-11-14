@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { loadConfig, REPO_ROOT, type FieldkitConfig } from "./config.ts";
@@ -62,6 +64,11 @@ async function main() {
       only: { type: "string", default: "" },
       quick: { type: "boolean", default: false },
       "fail-on": { type: "string", default: "fail" },
+      "spike-timeout-min": { type: "string", default: "180" },
+      // Internal: set by `run` when it starts a spike in a child process.
+      "child-out": { type: "string" },
+      "est-chunks": { type: "string" },
+      pick: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -92,6 +99,35 @@ async function main() {
   const only = new Set(values.only.split(",").map((s) => s.trim()).filter(Boolean));
   const ids = wanted.filter((id) => !skip.has(id) && (only.size === 0 || only.has(id)));
 
+  const outDir = values.fixtures ? join(REPO_ROOT, "fieldkit-out", "fixtures") : cfg.outDir;
+
+  // `run`: every spike in its own child process, report rewritten after each one, so a native
+  // crash (e.g. inside llama.cpp) loses only that spike, never the whole visit.
+  if (cmd === "run" && !values["child-out"]) {
+    const report = newReport();
+    const forward = [
+      ...(values.config ? ["--config", values.config] : []),
+      ...(values.testset ? ["--testset", values.testset] : []),
+      ...(values.fixtures ? ["--fixtures"] : []),
+      ...(values.quick ? ["--quick"] : []),
+    ];
+    const tmp = mkdtempSync(join(tmpdir(), "fieldkit-"));
+    for (const id of ids) {
+      const est = report.results.find((r) => r.id === "s5")?.data.estimatedChunks;
+      const pick = report.results.find((r) => r.id === "s3")?.data.pick;
+      const extra = [
+        ...(typeof est === "number" ? ["--est-chunks", String(est)] : []),
+        ...(typeof pick === "string" ? ["--pick", pick] : []),
+      ];
+      const r = await runChild(id, [...forward, ...extra], join(tmp, `${id}.json`), Number(values["spike-timeout-min"]) * 60_000);
+      report.results.push(r);
+      if (r.summary.startsWith("Crashed")) log(`  ${r.verdict} — ${r.summary}`); // the child logs its own result otherwise
+      writeReport(report, outDir);
+    }
+    rmSync(tmp, { recursive: true, force: true });
+    return finish(report, outDir, values["fail-on"]!);
+  }
+
   const report = newReport();
   const worker = new WorkerClient(cfg.python, cfg.extractTimeoutMs);
   let corpus: Corpus | null = null;
@@ -112,21 +148,17 @@ async function main() {
     }
     return evalDocs;
   };
+  const quick = values.quick!;
+  const estChunks = values["est-chunks"] ? Number(values["est-chunks"]) : undefined;
 
   const runners: Record<SpikeId, () => Promise<Omit<SpikeResult, "id" | "title" | "ms">>> = {
     census: () => census(cfg, corpus!),
     s1: () => s1(cfg),
-    s2: () => {
-      const est = report.results.find((r) => r.id === "s5")?.data.estimatedChunks;
-      return s2(cfg, { chunks: values.quick ? 100 : 300, estimatedChunks: typeof est === "number" ? est : undefined });
-    },
+    s2: () => s2(cfg, { chunks: quick ? 10 : 300, quick, estimatedChunks: estChunks, log }),
     s3: async () => s3(cfg, getTestset(), await getEvalDocs(), log),
-    s4: () => s4({ testsetPath: cfg.testsetPath }),
-    s4b: () => {
-      const pick = report.results.find((r) => r.id === "s3")?.data.pick;
-      return s4b(cfg, { testsetPath: cfg.testsetPath, embedderId: typeof pick === "string" ? pick : undefined });
-    },
-    s7: () => s7(cfg),
+    s4: () => s4({ testsetPath: cfg.testsetPath, limit: quick ? 8 : undefined }),
+    s4b: () => s4b(cfg, { testsetPath: cfg.testsetPath, embedderId: values.pick }),
+    s7: () => s7(cfg, { tokens: quick ? 16 : undefined }),
     s5: () => s5(cfg, corpus!, worker, log),
     s6: async () => s6(cfg, getTestset(), await getEvalDocs(), log),
   };
@@ -139,13 +171,55 @@ async function main() {
   }
   worker.close();
 
-  const out = writeReport(report, values.fixtures ? join(REPO_ROOT, "fieldkit-out", "fixtures") : cfg.outDir);
+  if (values["child-out"]) {
+    writeFileSync(values["child-out"], JSON.stringify(report.results[0] ?? null));
+    return;
+  }
+  finish(report, outDir, values["fail-on"]!);
+}
+
+function finish(report: ReturnType<typeof newReport>, outDir: string, failOn: string) {
+  const out = writeReport(report, outDir);
   log(`\nReport: ${out.md}\n        ${out.json}`);
   // --fail-on crash: only a crashed spike fails the run (CI dry runs on slow CPUs miss targets).
   const crashed = report.results.filter((r) => r.summary.startsWith("Crashed"));
   if (crashed.length) log(`Crashed: ${crashed.map((r) => r.id).join(", ")}`);
-  const failing = values["fail-on"] === "crash" ? crashed : report.results.filter((r) => r.verdict === "FAIL");
+  const failing = failOn === "crash" ? crashed : report.results.filter((r) => r.verdict === "FAIL");
   if (failing.length) process.exitCode = 1;
+}
+
+/** Run one spike in a child process; a crash or timeout becomes a "Crashed" result. */
+function runChild(id: SpikeId, args: string[], outFile: string, timeoutMs: number): Promise<SpikeResult> {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    const child = spawn(process.execPath, [...process.execArgv, process.argv[1]!, id, ...args, "--child-out", outFile], {
+      stdio: ["ignore", "inherit", "pipe"],
+    });
+    let tail = "";
+    child.stderr.on("data", (d: Buffer) => {
+      process.stderr.write(d);
+      tail = (tail + d.toString()).slice(-3000);
+    });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    child.on("exit", (code, signal) => {
+      clearTimeout(timer);
+      const ms = Math.round(performance.now() - t0);
+      if (existsSync(outFile)) {
+        const r = JSON.parse(readFileSync(outFile, "utf8")) as SpikeResult | null;
+        if (r) return resolve({ ...r, ms });
+      }
+      const why = timedOut ? `timeout after ${Math.round(timeoutMs / 60000)} min` : `exit code ${code ?? signal}${code === 3221226356 ? " (heap corruption)" : ""}`;
+      resolve({
+        id, title: SPIKES[id], verdict: "FAIL", ms,
+        summary: `Crashed: process ended (${why})`,
+        data: { error: `child process ended: ${why}`, logTail: tail },
+      });
+    });
+  });
 }
 
 function testsetCmd(cfg: FieldkitConfig, sub?: string) {
