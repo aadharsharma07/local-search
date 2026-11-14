@@ -32,9 +32,10 @@ or chunk settings change. Schema: `packages/daemon/src/db/migrations.ts`.
 Date parser and a BM25 probe run first. A decisive BM25 hit skips the language models. Otherwise
 typed lex/vec/hyde expansion and Laya facet decisions run in parallel, then four retrievers
 (filename, keyword, vector, facet scores), RRF fusion with the original query at 2x weight, rerank
-of the top 40, a position-aware blend, and a confidence threshold.
+of the top 10 as short snippets (rerank cost grows with tokens, so 40 full chunks is too slow on
+this GPU), a position-aware blend, and a confidence threshold.
 
 ## Development model
 
-Code on the Mac against `fixtures/`. CI runs on macOS and Windows on every push. Each visit to the PC
+Code on the Mac (no models are run there). CI runs tests on macOS and Windows on every push. Each visit to the PC
 runs `pnpm fieldkit run` (see `docs/FIELD-VISIT.md`) and commits an aggregate-only report.

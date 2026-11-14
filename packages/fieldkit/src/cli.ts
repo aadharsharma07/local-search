@@ -28,16 +28,17 @@ Options:
   --testset <file>    Test set (default: ~/.local-search/testset.json)
   --fixtures          Use the synthetic fixture corpus instead of your folders (dev mode)
   --skip <ids>        Comma-separated spikes to skip
-  --quick             Smaller S2 run (200 chunks)
+  --quick             Smaller S2 run (100 chunks)
 `;
 
+// Run order matters: S5 estimates the index size that S2 turns into an overnight-index estimate.
 const SPIKES = {
   census: "Corpus census",
   s1: "Native dependencies load",
+  s5: "Extraction and OCR quality",
   s2: "GPU speed",
   s3: "Embedding model comparison",
   s4: "Laya facet routing",
-  s5: "Extraction and OCR quality",
   s6: "qmd baseline",
 } as const;
 type SpikeId = keyof typeof SPIKES;
@@ -106,7 +107,10 @@ async function main() {
   const runners: Record<SpikeId, () => Promise<Omit<SpikeResult, "id" | "title" | "ms">>> = {
     census: () => census(cfg, corpus!),
     s1: () => s1(cfg),
-    s2: () => s2(cfg, { chunks: values.quick ? 200 : 1000 }),
+    s2: () => {
+      const est = report.results.find((r) => r.id === "s5")?.data.estimatedChunks;
+      return s2(cfg, { chunks: values.quick ? 100 : 300, estimatedChunks: typeof est === "number" ? est : undefined });
+    },
     s3: async () => s3(cfg, getTestset(), await getEvalDocs(), log),
     s4: () => s4(),
     s5: () => s5(cfg, corpus!, worker, log),

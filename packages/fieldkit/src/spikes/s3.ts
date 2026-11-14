@@ -56,14 +56,20 @@ function bm25Rankings(docs: Doc[], queries: string[]): string[][] {
       for (const ch of d.chunks) ins.run(d.title, ch, i);
     });
   })();
-  const stmt = db.prepare(
-    "SELECT doc, min(bm25(c, 4.0, 1.0)) AS s FROM c WHERE c MATCH ? GROUP BY doc ORDER BY s LIMIT 10",
-  );
+  // bm25() cannot be used under GROUP BY (SQLite flattens subqueries), so rank chunks in SQL
+  // and keep each file's best chunk in JS.
+  const stmt = db.prepare("SELECT doc, bm25(c, 4.0, 1.0) AS s FROM c WHERE c MATCH ? ORDER BY s LIMIT 500");
   return queries.map((q) => {
     const terms = q.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
     if (!terms.length) return [];
     const match = terms.map((t) => `"${t}"*`).join(" OR ");
-    return (stmt.all(match) as { doc: number }[]).map((r) => docs[r.doc]!.path);
+    const seen: string[] = [];
+    for (const r of stmt.all(match) as { doc: number }[]) {
+      const p = docs[r.doc]!.path;
+      if (!seen.includes(p)) seen.push(p);
+      if (seen.length === 10) break;
+    }
+    return seen;
   });
 }
 

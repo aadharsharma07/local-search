@@ -89,10 +89,16 @@ Back on the Mac, `git pull` brings the numbers into the next sprint.
 
 | Spike | Measures | Pass if | Decides |
 |---|---|---|---|
-| census | File counts, types, sizes, cloud-only files, download origins | info | Storage approach, index time |
+| census | File counts, types, sizes, cloud-only files, download origins | info | Storage approach |
 | s1 | Native libraries and the Python worker load | all load | Whether the stack works on Windows |
-| s2 | Embedding throughput and rerank latency on the GPU | ≥100 chunks/s, rerank 40 ≤300 ms | GPU vs CPU fallback |
+| s5 | Usable text from a sample of real files, per OCR engine; index size estimate | ≥90% usable | Default OCR engine |
+| s2 | Embedding speed, first-index time, query embed and rerank latency on the GPU | first index ≤12 h, query embed ≤50 ms, rerank 10 snippets ≤400 ms | GPU settings, rerank size |
 | s3 | recall@5 and MRR for three embedding models vs BM25 | info | Which embedding model |
-| s4 | Laya facet accuracy and latency | ≥85%, p50 ≤200 ms | Laya vs a small LLM for facets |
-| s5 | Usable text from a sample of real files, per OCR engine | ≥90% usable | Default OCR engine |
+| s4 | Laya facet accuracy (time via chrono + Laya) and latency on CPU and DirectML | ≥85%, p50 ≤250 ms | Laya vs a small LLM; CPU vs GPU |
 | s6 | qmd on the same files and queries | info | The baseline to beat |
+
+Why these targets: embedding and reranking cost about 2 × model parameters × tokens, so a
+300M-parameter embedder on this GPU will do tens of chunks per second, not hundreds. The real
+questions are whether the first full index finishes overnight (it runs in the background, idle
+only) and whether each search stays fast. Reranking therefore uses 10 short snippets rather than
+40 full chunks.

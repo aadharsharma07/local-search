@@ -19,17 +19,15 @@ field kit. No search yet.
 
 ## Develop (Mac)
 
+The Mac is for writing code only. Do not run models or the field kit's model spikes on it; tests
+and the fixture smoke run happen in CI (macOS and Windows) on every push, and real measurements
+happen on the PC.
+
 ```sh
 corepack enable
 pnpm install
 python3 -m venv worker/.venv
 worker/.venv/bin/pip install -e "worker[ocr,dev]"
-
-pnpm typecheck && pnpm test
-(cd worker && .venv/bin/python -m pytest -q)
-
-# Field kit against the fixtures (writes to fieldkit-out/, gitignored)
-pnpm fieldkit run --fixtures --skip s6
 ```
 
 Regenerate fixtures with `worker/.venv/bin/python fixtures/generate.py`.
