@@ -1,0 +1,21 @@
+{
+  "about": "Retrieval test set for the synthetic corpus. Paths are relative to fixtures/corpus. 'now' is the date relative phrases are resolved against. Git does not keep file mtimes, so time expectations rely on dates inside the content.",
+  "now": "2026-11-12",
+  "queries": [
+    { "q": "where did I buy that office chair three years ago", "expected": ["Downloads/nordhem-order-88123.pdf", "Documents/Receipts/copy of nordhem-order-88123.pdf"] },
+    { "q": "how much was my electricity bill in january 2024", "expected": ["Documents/Bills/scan-2024-01-0007.pdf"], "needs": "ocr" },
+    { "q": "flight to vancouver confirmation code", "expected": ["Pictures/Screenshots/Screenshot 2025-05-11 213344.png"], "needs": "ocr" },
+    { "q": "drawing of a dragon", "expected": ["Pictures/Art/IMG_0412.png"], "needs": "captions" },
+    { "q": "my 2023 tax refund", "expected": ["Documents/Taxes/2023 return summary.docx"] },
+    { "q": "invoice I sent the bakery", "expected": ["Documents/Work/invoice-0042.docx"] },
+    { "q": "what was my rent at the old apartment", "expected": ["Documents/Housing/lease.pdf"] },
+    { "q": "eigenvalues lecture notes", "expected": ["Documents/School/MATH 136/lecture-07.md"] },
+    { "q": "python edit distance function", "expected": ["Code/tools/fuzzy_match.py"] },
+    { "q": "script that backs up my photos", "expected": ["Code/scripts/backup-photos.ps1"] },
+    { "q": "banana bread recipe", "expected": ["Documents/Notes/banana bread.txt"] },
+    { "q": "cafe menu", "expected": ["Documents/Notes/café menu ideas.md"] },
+    { "q": "first day in the dorm journal", "expected": ["Documents/Notes/journal-2019.txt"] },
+    { "q": "pet policy in my lease", "expected": ["Documents/Housing/lease.pdf"] },
+    { "q": "QX7P2L", "expected": ["Pictures/Screenshots/Screenshot 2025-05-11 213344.png"], "needs": "ocr" }
+  ]
+}

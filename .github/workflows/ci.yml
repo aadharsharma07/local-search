@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up the Python worker
+        run: |
+          python -m venv worker/.venv
+          if [ "$RUNNER_OS" = "Windows" ]; then PY=worker/.venv/Scripts/python.exe; EXTRAS="ocr,windows,dev"; else PY=worker/.venv/bin/python; EXTRAS="ocr,dev"; fi
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install -e "worker[$EXTRAS]"
+          echo "PY=$PY" >> "$GITHUB_ENV"
+
+      - name: Worker tests
+        run: cd worker && "../$PY" -m pytest -q -W ignore::DeprecationWarning
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      # Native deps, census and extraction on this OS, against the synthetic fixtures.
+      # GPU spikes (s2, s3, s4, s6) need real hardware and run on the PC.
+      - name: Field kit smoke run
+        run: pnpm fieldkit run --fixtures --skip s2,s3,s4,s6
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fieldkit-fixtures-${{ matrix.os }}
+          path: fieldkit-out/fixtures

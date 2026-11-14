@@ -1,0 +1,26 @@
+# Copy to fieldkit.yaml (gitignored) to override defaults. Every key is optional.
+
+# Folders to scan. ~ means your user folder.
+roots:
+  - ~/Documents
+  - ~/Downloads
+  - ~/Desktop
+  - ~/Pictures
+  # - D:/School
+
+# Extra folder names to skip anywhere in the tree (added to the built-in list).
+excludeDirs:
+  - Steam
+
+# Where your private test set lives (never inside the repo).
+testsetPath: ~/.local-search/testset.json
+
+# Number of random non-answer files mixed into the S3 search test.
+s3Distractors: 1500
+
+# Files sampled per type for S5.
+s5Sample:
+  pdf: 40
+  image: 40
+  docx: 20
+  text: 20

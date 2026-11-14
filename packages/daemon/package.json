@@ -1,0 +1,19 @@
+{
+  "name": "@local-search/daemon",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./db": "./src/db/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.1.1",
+    "sqlite-vec": "^0.1.9"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.local-search/
+fieldkit-out/
+.DS_Store
+fieldkit.yaml
+*.egg-info/

@@ -1,0 +1,22 @@
+{
+  "name": "@local-search/fieldkit",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "start": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@receptron/laya": "^0.2.0",
+    "better-sqlite3": "^13.1.1",
+    "chrono-node": "^2.10.3",
+    "node-llama-cpp": "^3.22.3",
+    "onnxruntime-node": "1.31.1",
+    "sqlite-vec": "^0.1.9",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0"
+  }
+}
