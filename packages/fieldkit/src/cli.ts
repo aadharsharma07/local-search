@@ -10,16 +10,18 @@ import { s1 } from "./spikes/s1.ts";
 import { s2 } from "./spikes/s2.ts";
 import { buildEvalDocs, s3, type Doc } from "./spikes/s3.ts";
 import { s4 } from "./spikes/s4.ts";
+import { s4b } from "./spikes/s4b.ts";
+import { s7 } from "./spikes/s7.ts";
 import { s5 } from "./spikes/s5.ts";
 import { s6 } from "./spikes/s6.ts";
-import { loadTestSet, type TestSet } from "./testset.ts";
+import { loadTestSet, type TestSet } from "@local-search/daemon/shared/testset";
 import { WorkerClient } from "@local-search/daemon/shared/worker";
 
 const HELP = `fieldkit — measurements for the local-search PC (see docs/FIELD-VISIT.md)
 
 Usage:
-  fieldkit run [--skip s2,s6] [--fixtures]   Run everything and write a report
-  fieldkit census | s1 | s2 | s3 | s4 | s5 | s6
+  fieldkit run [--skip s6] [--fixtures]      Run everything and write a report
+  fieldkit census | s1 | s5 | s2 | s3 | s4 | s4b | s7 | s6
   fieldkit testset init                      Create a test set template to fill in
   fieldkit testset check                     Validate the test set
 
@@ -29,6 +31,7 @@ Options:
   --fixtures          Use the synthetic fixture corpus instead of your folders (dev mode)
   --skip <ids>        Comma-separated spikes to skip
   --quick             Smaller S2 run (100 chunks)
+  --fail-on <what>    fail (default): exit 1 on any FAIL; crash: only on a crashed spike
 `;
 
 // Run order matters: S5 estimates the index size that S2 turns into an overnight-index estimate.
@@ -39,6 +42,8 @@ const SPIKES = {
   s2: "GPU speed",
   s3: "Embedding model comparison",
   s4: "Laya facet routing",
+  s4b: "Rules + embedding facet routing",
+  s7: "Text generation speed",
   s6: "qmd baseline",
 } as const;
 type SpikeId = keyof typeof SPIKES;
@@ -54,6 +59,7 @@ async function main() {
       fixtures: { type: "boolean", default: false },
       skip: { type: "string", default: "" },
       quick: { type: "boolean", default: false },
+      "fail-on": { type: "string", default: "fail" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -112,7 +118,12 @@ async function main() {
       return s2(cfg, { chunks: values.quick ? 100 : 300, estimatedChunks: typeof est === "number" ? est : undefined });
     },
     s3: async () => s3(cfg, getTestset(), await getEvalDocs(), log),
-    s4: () => s4(),
+    s4: () => s4({ testsetPath: cfg.testsetPath }),
+    s4b: () => {
+      const pick = report.results.find((r) => r.id === "s3")?.data.pick;
+      return s4b(cfg, { testsetPath: cfg.testsetPath, embedderId: typeof pick === "string" ? pick : undefined });
+    },
+    s7: () => s7(cfg),
     s5: () => s5(cfg, corpus!, worker, log),
     s6: async () => s6(cfg, getTestset(), await getEvalDocs(), log),
   };
@@ -127,7 +138,11 @@ async function main() {
 
   const out = writeReport(report, values.fixtures ? join(REPO_ROOT, "fieldkit-out", "fixtures") : cfg.outDir);
   log(`\nReport: ${out.md}\n        ${out.json}`);
-  if (report.results.some((r) => r.verdict === "FAIL")) process.exitCode = 1;
+  // --fail-on crash: only a crashed spike fails the run (CI dry runs on slow CPUs miss targets).
+  const crashed = report.results.filter((r) => r.summary.startsWith("Crashed"));
+  if (crashed.length) log(`Crashed: ${crashed.map((r) => r.id).join(", ")}`);
+  const failing = values["fail-on"] === "crash" ? crashed : report.results.filter((r) => r.verdict === "FAIL");
+  if (failing.length) process.exitCode = 1;
 }
 
 function testsetCmd(cfg: FieldkitConfig, sub?: string) {

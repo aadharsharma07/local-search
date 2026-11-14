@@ -1,5 +1,6 @@
 {
   "about": "Retrieval test set for the synthetic corpus. Paths are relative to fixtures/corpus. 'now' is the date relative phrases are resolved against. Git does not keep file mtimes, so time expectations rely on dates inside the content.",
+  "root": "corpus",
   "now": "2026-11-12",
   "queries": [
     { "q": "where did I buy that office chair three years ago", "expected": ["Downloads/nordhem-order-88123.pdf", "Documents/Receipts/copy of nordhem-order-88123.pdf"] },

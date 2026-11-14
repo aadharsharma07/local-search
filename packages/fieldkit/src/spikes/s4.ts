@@ -1,20 +1,10 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import * as chrono from "chrono-node";
-import { REPO_ROOT } from "../config.ts";
+import { detectTime } from "@local-search/daemon/planner/rules";
+import { headline, loadLabeled, scoreFacets, type Prediction } from "../facets.ts";
 import { quantile, round, type SpikeResult } from "../report.ts";
 
 // Pass criteria from the blueprint.
 const MIN_ACCURACY = 0.85;
 const MAX_P50_MS = 250; // all four questions in one call, on the fastest provider
-
-interface Labeled {
-  q: string;
-  time: boolean;
-  origin: boolean;
-  type: string;
-  content: string;
-}
 
 /** The facet questions Laya answers for every query. These become the production planner. */
 export const FACET_QUESTIONS = {
@@ -58,27 +48,24 @@ export const FACET_QUESTIONS = {
   },
 } as const;
 
-/** Facets Laya decides. Time is decided by chrono first; Laya's time answer is the fallback. */
-const LAYA_FACETS = ["time", "origin", "type", "content"] as const;
-type Facet = (typeof LAYA_FACETS)[number];
-
 /** Execution providers to try. DirectML runs ONNX on the AMD GPU on Windows. */
 function providers(): string[][] {
   return process.platform === "win32" ? [["cpu"], ["dml"]] : [["cpu"]];
 }
 
+type Answers = Record<string, { noul?: number; choice?: string; answer_confidence: number }>;
+
 /**
- * S4: does Laya pick the right facets for real queries, fast enough? Measured on the CPU and,
- * on Windows, on the GPU through DirectML. Time combines chrono (deterministic) with Laya.
+ * S4: does Laya pick the right facets, fast enough? Measured on the CPU and, on Windows, on the
+ * GPU through DirectML. Time is the rule detector (chrono + phrasings) OR Laya's time answer.
+ * Scored on the fixture labels and on any facet labels in your test set.
  */
-export async function s4(opts: { file?: string; now?: Date } = {}): Promise<Omit<SpikeResult, "id" | "title" | "ms">> {
-  const file = opts.file ?? join(REPO_ROOT, "fixtures", "laya-facets.json");
-  const labeled = (JSON.parse(readFileSync(file, "utf8")) as { queries: Labeled[] }).queries;
+export async function s4(opts: { testsetPath?: string; now?: Date } = {}): Promise<Omit<SpikeResult, "id" | "title" | "ms">> {
+  const labeled = loadLabeled(opts.testsetPath);
   const now = opts.now ?? new Date();
   const { Laya } = await import("@receptron/laya");
 
   const latency: Record<string, { all4P50: number; without_timeP50: number; loadMs: number } | { error: string }> = {};
-  type Answers = Record<string, { noul?: number; choice?: string; answer_confidence: number }>;
   let answers: Answers[] | null = null;
 
   for (const ep of providers()) {
@@ -116,52 +103,29 @@ export async function s4(opts: { file?: string; now?: Date } = {}): Promise<Omit
   }
   if (!answers) throw new Error(`Laya did not run: ${JSON.stringify(latency)}`);
 
-  const correct: Record<Facet | "time_chrono" | "time_combined", number> = {
-    time: 0, origin: 0, type: 0, content: 0, time_chrono: 0, time_combined: 0,
-  };
-  const misses: { q: string; facet: string; want: string; got: string; p: number }[] = [];
-  labeled.forEach((item, i) => {
+  const preds: Prediction[] = labeled.map((item, i) => {
     const a = answers![i]!;
-    const chronoHit = chrono.parse(item.q, now).length > 0;
-    const layaTime = (a.time!.noul ?? 0) >= 0.5;
-    const got = {
-      time: layaTime,
+    return {
+      time: detectTime(item.q, now) || (a.time!.noul ?? 0) >= 0.5,
       origin: (a.origin!.noul ?? 0) >= 0.5,
       type: a.type!.choice!,
       content: a.content!.choice!,
     };
-    for (const k of LAYA_FACETS) {
-      if (got[k] === item[k]) correct[k]++;
-      else misses.push({ q: item.q, facet: k, want: String(item[k]), got: String(got[k]), p: round(a[k]!.answer_confidence, 2) });
-    }
-    if (chronoHit === item.time) correct.time_chrono++;
-    if ((chronoHit || layaTime) === item.time) correct.time_combined++;
   });
-
-  const n = labeled.length;
-  const acc = Object.fromEntries(Object.entries(correct).map(([k, v]) => [k, round(v / n, 3)])) as Record<keyof typeof correct, number>;
-  // The planner uses chrono-or-Laya for time, so that is what counts toward the verdict.
-  const mean = (acc.time_combined + acc.origin + acc.type + acc.content) / 4;
+  const scored = scoreFacets(labeled, preds);
+  const h = headline(scored);
   const best = Object.entries(latency)
     .filter((e): e is [string, { all4P50: number; without_timeP50: number; loadMs: number }] => "all4P50" in e[1])
     .sort((a, b) => a[1].all4P50 - b[1].all4P50)[0];
   const p50 = best ? best[1].all4P50 : Infinity;
-  const pass = mean >= MIN_ACCURACY && p50 <= MAX_P50_MS;
+  const pass = h.mean >= MIN_ACCURACY && p50 <= MAX_P50_MS;
   const pct = (x: number) => round(x * 100);
 
   return {
     verdict: pass ? "PASS" : "FAIL",
     summary:
-      `facet accuracy ${pct(mean)}% (time ${pct(acc.time_combined)} with chrono, origin ${pct(acc.origin)}, type ${pct(acc.type)}, content ${pct(acc.content)}; need ≥${MIN_ACCURACY * 100}); ` +
+      `Laya on ${h.source} queries (${h.n}): ${pct(h.mean)}% (time ${pct(h.accuracy.time!)}, origin ${pct(h.accuracy.origin!)}, type ${pct(h.accuracy.type!)}, content ${pct(h.accuracy.content!)}; need ≥${MIN_ACCURACY * 100}); ` +
       `fastest ${best?.[0] ?? "none"} p50 ${Number.isFinite(p50) ? Math.round(p50) : "n/a"} ms (need ≤${MAX_P50_MS})`,
-    data: {
-      queries: n,
-      accuracy: acc,
-      meanAccuracy: round(mean, 3),
-      latencyMs: latency,
-      // Fixture queries are synthetic, so listing misses is safe and useful.
-      misses,
-      criteria: { minAccuracy: MIN_ACCURACY, maxP50Ms: MAX_P50_MS },
-    },
+    data: { accuracy: scored.bySource, latencyMs: latency, misses: scored.misses, criteria: { minAccuracy: MIN_ACCURACY, maxP50Ms: MAX_P50_MS } },
   };
 }

@@ -3,9 +3,9 @@
 A private, on-device replacement for Windows Search: ask in plain words, get the file back in under
 a second. Nothing leaves the PC. Personal project; see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status: Sprint 1 in progress.** Index schema, extraction worker, field kit, and a command-line
-ingest + hybrid search (`pnpm lsd index`, `pnpm lsd search "..." --explain`). No facets, expansion
-or reranking yet.
+**Status: paused for Visit 1.** Built so far: index schema, extraction worker, field kit, and a
+command-line ingest, hybrid search and bench (`pnpm lsd index | search | bench`). Feature work waits
+for the first real measurements on the PC; see the schedule in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Layout
 

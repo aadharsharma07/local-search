@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { FieldkitConfig } from "../config.ts";
 import { round, type SpikeResult } from "../report.ts";
-import { scoreRankings, type TestSet } from "../testset.ts";
+import { scoreRankings, type TestSet } from "@local-search/daemon/shared/testset";
 import type { Doc } from "./s3.ts";
 
 export const QMD_VERSION = "2.8.3";

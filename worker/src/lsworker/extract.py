@@ -98,7 +98,7 @@ def _pdf(path: Path, res: Result, ocr_name: str) -> None:
                 res.pages.append(Page(i, text, "text"))
                 continue
             if engine is None:
-                engine = ocr.resolve(ocr_name) or False
+                engine = (ocr_name != "none" and ocr.resolve(ocr_name)) or False
             if not engine:
                 res.pages.append(Page(i, text, "text"))
                 continue
@@ -114,6 +114,12 @@ def _pdf(path: Path, res: Result, ocr_name: str) -> None:
 def _image(path: Path, res: Result, ocr_name: str) -> None:
     from PIL import Image
 
+    if ocr_name == "none":
+        # OCR switched off: the image is still indexed, by name and metadata only.
+        with Image.open(path) as img:
+            img.verify()
+        res.pages.append(Page(None, "", "none"))
+        return
     engine = ocr.resolve(ocr_name)
     if engine is None:
         raise RuntimeError("no OCR engine available")

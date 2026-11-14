@@ -1,0 +1,67 @@
+name: fieldkit dry run
+
+# Runs every field kit spike, plus lsd index and bench with the real embedding model, on a
+# GitHub-hosted Windows runner (CPU only) against the synthetic fixtures. Performance numbers
+# here mean nothing; the point is that nothing crashes before a visit to the PC.
+# Trigger it by hand before each visit: Actions -> fieldkit dry run -> Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip:
+        description: "Spikes to skip (comma-separated, e.g. s6)"
+        required: false
+        default: ""
+
+jobs:
+  dry-run:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache models
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local-search/models
+            ~/.cache/receptron-laya
+          key: models-${{ hashFiles('packages/fieldkit/src/models.ts', 'packages/fieldkit/src/spikes/s7.ts', 'packages/daemon/src/embed/index.ts') }}
+
+      - name: Install
+        run: |
+          pnpm install --frozen-lockfile
+          python -m venv worker/.venv
+          worker/.venv/Scripts/python.exe -m pip install --upgrade pip
+          worker/.venv/Scripts/python.exe -m pip install -e "worker[ocr,windows]"
+
+      - name: Field kit, all spikes
+        run: pnpm fieldkit run --fixtures --quick --fail-on crash --skip "${{ inputs.skip }}"
+
+      - name: Index and bench the fixtures with the real embedder
+        run: |
+          DB="$RUNNER_TEMP/dry-run.sqlite"
+          pnpm lsd index --db "$DB" --roots "$GITHUB_WORKSPACE/fixtures/corpus" --embedder gemma
+          pnpm lsd bench --db "$DB" --testset "$GITHUB_WORKSPACE/fixtures/queries.json" --embedder gemma --out "$GITHUB_WORKSPACE/fieldkit-out/bench"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fieldkit-dry-run
+          path: fieldkit-out

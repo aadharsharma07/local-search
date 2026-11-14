@@ -10,7 +10,8 @@
     "./shared/*": "./src/shared/*.ts",
     "./ingest": "./src/ingest/index.ts",
     "./search": "./src/search/index.ts",
-    "./embed": "./src/embed/index.ts"
+    "./embed": "./src/embed/index.ts",
+    "./planner/rules": "./src/planner/rules.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.1.1",
+    "chrono-node": "^2.10.3",
     "node-llama-cpp": "^3.22.3",
     "sqlite-vec": "^0.1.9"
   },

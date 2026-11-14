@@ -112,3 +112,10 @@ def test_cloud_attrs_on_normal_files():
 
     res = cloud_attrs([str(CORPUS / "Documents/Housing/lease.pdf"), str(CORPUS / "missing.pdf")])
     assert res == {"supported": True, "placeholders": []}
+
+
+def test_ocr_none_never_loads_a_model():
+    img = extract(CORPUS / "Pictures/Screenshots/Screenshot 2025-05-11 213344.png", "none")
+    assert img.ok and img.text == "" and img.pages[0].method == "none"
+    scan = extract(CORPUS / "Documents/Bills/scan-2024-01-0007.pdf", "none")
+    assert scan.ok and all(p.method == "text" for p in scan.pages)

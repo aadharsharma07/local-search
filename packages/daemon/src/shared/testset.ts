@@ -1,10 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 
+export interface FacetLabels {
+  time: boolean;
+  origin: boolean;
+  type: "document" | "image" | "code" | "text" | "unspecified";
+  content: string;
+}
+
 export interface TestQuery {
   q: string;
   expected: string[]; // absolute after loading
   needs?: "ocr" | "captions";
+  /** Optional hand labels so S4/S4b can score facet routing on real queries. */
+  facets?: FacetLabels;
 }
 export interface TestSet {
   root: string;
@@ -23,9 +32,11 @@ export function loadTestSet(path: string, defaultRoot?: string): TestSet {
   const raw = JSON.parse(readFileSync(path, "utf8")) as {
     root?: string;
     now?: string;
-    queries: { q: string; expected: string[]; needs?: TestQuery["needs"] }[];
+    queries: { q: string; expected: string[]; needs?: TestQuery["needs"]; facets?: FacetLabels }[];
   };
-  const root = raw.root ?? defaultRoot ?? join(path, "..");
+  // A relative root is resolved against the test set file's folder.
+  const base = join(path, "..");
+  const root = raw.root ? (isAbsolute(raw.root) ? raw.root : join(base, raw.root)) : (defaultRoot ?? base);
   const missing: string[] = [];
   const queries = raw.queries.map((q) => ({
     ...q,

@@ -9,7 +9,7 @@ import { hostOf, parseZoneIdentifier, readOrigin } from "@local-search/daemon/sh
 import { quantile } from "../src/report.ts";
 import { parseQmdJson } from "../src/spikes/s6.ts";
 import { wordiness } from "../src/spikes/s5.ts";
-import { scoreRankings } from "../src/testset.ts";
+import { scoreRankings } from "@local-search/daemon/shared/testset";
 import { walkAll } from "@local-search/daemon/shared/walk";
 
 describe("walk", () => {

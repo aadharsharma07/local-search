@@ -27,13 +27,26 @@ One SQLite file: FTS5 for keywords, sqlite-vec for vectors. Text, chunks and vec
 content hash. An embedding fingerprint in `meta` flags vectors stale when the model, prompt format
 or chunk settings change. Schema: `packages/daemon/src/db/migrations.ts`.
 
-## Query path
+## Query path (provisional until Visit 1)
 
-Date parser and a BM25 probe run first. A decisive BM25 hit skips the language models. Otherwise
-typed lex/vec/hyde expansion and Laya facet decisions run in parallel, then four retrievers
-(filename, keyword, vector, facet scores), RRF fusion with the original query at 2x weight, rerank
-of the top 10 as short snippets (rerank cost grows with tokens, so 40 full chunks is too slow on
-this GPU), a position-aware blend, and a confidence threshold.
+Query embedding, a BM25 probe and model-free facet rules run first. Retrievers (filename, keyword,
+vector, facet scores) are fused with RRF, the original query at 2x weight. The top 10 are reranked
+as short snippets, followed by a position-aware blend and a confidence threshold. Every model costs
+about 2 × parameters × tokens, so Laya and LLM query expansion stay off the per-query path unless
+S4 and S7 show they fit the budget. Expansion may run only when the first results are weak.
+
+## Schedule
+
+Development follows the visits, because only the PC can answer the open questions.
+
+| When | Work |
+|---|---|
+| Before Visit 1 (done) | Schema, worker, field kit (S1–S7, S4b), `lsd index / search / bench`, CI dry run |
+| Visit 1 | Field kit, private test set, one-folder index + bench. Decide: embedder, OCR engine, facet routing, expansion, rerank size |
+| Sprint 2 | Planner and facets as decided; Everything integration; idle-only job queue; daemon API |
+| Visit 2 | Full overnight index if the visit allows; bench vs qmd; tune |
+| Sprint 3 | Tauri popup (built on the Mac against a model-free dev index); feedback; category tree and receipt fields (generated on the PC) |
+| Visits 3–4 | Daily use and tuning |
 
 ## Development model
 

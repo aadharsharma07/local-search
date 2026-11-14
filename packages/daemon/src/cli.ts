@@ -2,7 +2,9 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { DATA_DIR, DEFAULT_EXCLUDES, defaultPython, defaultRoots } from "./config.ts";
+import { bench, writeBench } from "./bench.ts";
+import { DATA_DIR, DEFAULT_EXCLUDES, defaultPython, defaultRoots, REPO_ROOT } from "./config.ts";
+import { loadTestSet } from "./shared/testset.ts";
 import { openDb } from "./db/index.ts";
 import { EMBEDDINGGEMMA, HashEmbedder, LlamaEmbedder, type Embedder } from "./embed/index.ts";
 import { processQueue, scan, stateCounts } from "./ingest/index.ts";
@@ -15,10 +17,12 @@ Usage:
   lsd index [--roots a,b] [--embedder gemma|hash]   Scan folders and index new or changed files
   lsd search "<query>" [-n 10] [--explain]          Hybrid keyword + vector + filename search
   lsd status                                         File counts by state
+  lsd bench [--testset <file>] [--out <dir>]         Score the index against the test set
 
 Options:
   --db <file>        Index file (default: ~/.local-search/index.sqlite)
   --embedder <name>  gemma (default; runs a model, use on the PC) or hash (no model, keyword-level)
+  --ocr <engine>     auto (default), windows, rapidocr, tesseract, or none (skip OCR entirely)
 `;
 
 async function makeEmbedder(name: string): Promise<Embedder> {
@@ -36,6 +40,9 @@ async function main() {
       embedder: { type: "string", default: "gemma" },
       n: { type: "string", short: "n", default: "10" },
       explain: { type: "boolean", default: false },
+      testset: { type: "string" },
+      out: { type: "string" },
+      ocr: { type: "string", default: "auto" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -72,6 +79,7 @@ async function main() {
     const r = await processQueue(db, {
       worker,
       embedder,
+      ocr: values.ocr,
       onFile: () => {
         if (++n % 25 === 0) console.error(`  ${n} files processed`);
       },
@@ -79,6 +87,17 @@ async function main() {
     console.error(`index: ${r.indexed} indexed · ${r.linked} duplicates linked · ${r.failed} failed · ${r.reembedded} chunks re-embedded`);
     await embedder.close();
     worker.close();
+    return;
+  }
+
+  if (cmd === "bench") {
+    const t = loadTestSet(values.testset ?? join(DATA_DIR, "testset.json"));
+    const embedder = await makeEmbedder(values.embedder!);
+    const r = await bench(db, embedder, t);
+    await embedder.close();
+    const dir = writeBench(r, values.out ?? join(REPO_ROOT, "reports"));
+    console.log(`recall@5 ${Math.round(r.recallAt5 * 1000) / 10}% · MRR ${r.mrr} · ${r.queries.inScope}/${r.queries.total} queries in scope · p50 ${r.latencyMs.p50} ms`);
+    console.error(`Report: ${dir}`);
     return;
   }
 
