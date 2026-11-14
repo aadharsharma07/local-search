@@ -30,6 +30,7 @@ Options:
   --testset <file>    Test set (default: ~/.local-search/testset.json)
   --fixtures          Use the synthetic fixture corpus instead of your folders (dev mode)
   --skip <ids>        Comma-separated spikes to skip
+  --only <ids>        Run only these spikes (safer than --skip when new spikes are added)
   --quick             Smaller S2 run (100 chunks)
   --fail-on <what>    fail (default): exit 1 on any FAIL; crash: only on a crashed spike
 `;
@@ -58,6 +59,7 @@ async function main() {
       testset: { type: "string" },
       fixtures: { type: "boolean", default: false },
       skip: { type: "string", default: "" },
+      only: { type: "string", default: "" },
       quick: { type: "boolean", default: false },
       "fail-on": { type: "string", default: "fail" },
       help: { type: "boolean", short: "h", default: false },
@@ -87,7 +89,8 @@ async function main() {
     return;
   }
   const skip = new Set(values.skip.split(",").map((s) => s.trim()).filter(Boolean));
-  const ids = wanted.filter((id) => !skip.has(id));
+  const only = new Set(values.only.split(",").map((s) => s.trim()).filter(Boolean));
+  const ids = wanted.filter((id) => !skip.has(id) && (only.size === 0 || only.has(id)));
 
   const report = newReport();
   const worker = new WorkerClient(cfg.python, cfg.extractTimeoutMs);
