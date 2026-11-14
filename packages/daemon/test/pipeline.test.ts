@@ -1,5 +1,6 @@
 // End-to-end ingest and search over a copy of the fixture corpus, with the real Python worker and
-// the no-model HashEmbedder. Runs in CI; needs worker/.venv.
+// the no-model HashEmbedder. It runs OCR (a small ONNX model), so it only runs in CI or when
+// LS_HEAVY_TESTS=1 is set; never on the dev Mac by default.
 import { cpSync, existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +13,8 @@ import { search } from "../src/search/index.ts";
 import { WorkerClient } from "../src/shared/worker.ts";
 
 const python = defaultPython();
-const run = existsSync(python) ? describe : describe.skip;
+const heavy = Boolean(process.env.CI || process.env.LS_HEAVY_TESTS);
+const run = existsSync(python) && heavy ? describe : describe.skip;
 
 run("ingest + search pipeline", () => {
   let dir: string;

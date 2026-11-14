@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,7 +10,9 @@ from lsworker import ocr
 from lsworker.extract import extract, kind_for
 
 CORPUS = Path(__file__).resolve().parents[2] / "fixtures" / "corpus"
-HAS_OCR = bool(ocr.available_engines())
+# OCR loads a model, so OCR tests only run in CI (or with LS_HEAVY_TESTS=1), never on the dev Mac.
+HEAVY = bool(os.environ.get("CI") or os.environ.get("LS_HEAVY_TESTS"))
+HAS_OCR = HEAVY and bool(ocr.available_engines())
 
 
 def test_kinds():
@@ -61,7 +64,7 @@ def test_size_limit(tmp_path):
     assert not r.ok and "too large" in (r.error or "")
 
 
-@pytest.mark.skipif(not HAS_OCR, reason="no OCR engine installed")
+@pytest.mark.skipif(not HAS_OCR, reason="OCR tests run in CI only (or LS_HEAVY_TESTS=1)")
 def test_scanned_pdf_uses_ocr():
     r = extract(CORPUS / "Documents/Bills/scan-2024-01-0007.pdf")
     assert r.ok, r.error
@@ -69,7 +72,7 @@ def test_scanned_pdf_uses_ocr():
     assert "84.12" in r.text
 
 
-@pytest.mark.skipif(not HAS_OCR, reason="no OCR engine installed")
+@pytest.mark.skipif(not HAS_OCR, reason="OCR tests run in CI only (or LS_HEAVY_TESTS=1)")
 def test_screenshot_ocr():
     r = extract(CORPUS / "Pictures/Screenshots/Screenshot 2025-05-11 213344.png")
     assert r.ok, r.error

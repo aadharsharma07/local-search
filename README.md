@@ -20,8 +20,8 @@ or reranking yet.
 
 ## Develop (Mac)
 
-The Mac is for writing code only. Do not run models or the field kit's model spikes on it; tests
-and the fixture smoke run happen in CI (macOS and Windows) on every push, and real measurements
+The Mac is for writing code and quick tests. Do not run models or the field kit's spikes on it; OCR,
+pipeline tests and the fixture smoke run happen in CI (macOS and Windows) on every push, and real measurements
 happen on the PC.
 
 ```sh
@@ -29,6 +29,13 @@ corepack enable
 pnpm install
 python3 -m venv worker/.venv
 worker/.venv/bin/pip install -e "worker[ocr,dev]"
+```
+
+Quick model-free tests are fine on the Mac (OCR and pipeline tests skip themselves outside CI):
+
+```sh
+pnpm typecheck && pnpm test
+(cd worker && .venv/bin/python -m pytest -q)
 ```
 
 Regenerate fixtures with `worker/.venv/bin/python fixtures/generate.py`.
