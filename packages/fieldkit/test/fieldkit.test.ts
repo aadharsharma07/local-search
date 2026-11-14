@@ -2,15 +2,15 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { chunkText } from "../src/chunk.ts";
+import { chunkText } from "@local-search/daemon/shared/chunk";
 import { sample } from "../src/corpus.ts";
-import { kindFor } from "../src/kinds.ts";
-import { hostOf, parseZoneIdentifier, readOrigin } from "../src/platform.ts";
+import { kindFor } from "@local-search/daemon/shared/kinds";
+import { hostOf, parseZoneIdentifier, readOrigin } from "@local-search/daemon/shared/platform";
 import { quantile } from "../src/report.ts";
 import { parseQmdJson } from "../src/spikes/s6.ts";
 import { wordiness } from "../src/spikes/s5.ts";
 import { scoreRankings } from "../src/testset.ts";
-import { walkAll } from "../src/walk.ts";
+import { walkAll } from "@local-search/daemon/shared/walk";
 
 describe("walk", () => {
   it("skips excluded folders, Office temp files and links", () => {

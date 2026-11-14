@@ -13,7 +13,7 @@ import { s4 } from "./spikes/s4.ts";
 import { s5 } from "./spikes/s5.ts";
 import { s6 } from "./spikes/s6.ts";
 import { loadTestSet, type TestSet } from "./testset.ts";
-import { WorkerClient } from "./worker.ts";
+import { WorkerClient } from "@local-search/daemon/shared/worker";
 
 const HELP = `fieldkit — measurements for the local-search PC (see docs/FIELD-VISIT.md)
 

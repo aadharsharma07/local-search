@@ -3,14 +3,15 @@
 A private, on-device replacement for Windows Search: ask in plain words, get the file back in under
 a second. Nothing leaves the PC. Personal project; see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status: Sprint 0.** Repo skeleton, index schema, extraction worker, synthetic fixtures and the
-field kit. No search yet.
+**Status: Sprint 1 in progress.** Index schema, extraction worker, field kit, and a command-line
+ingest + hybrid search (`pnpm lsd index`, `pnpm lsd search "..." --explain`). No facets, expansion
+or reranking yet.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `packages/daemon` | Node/TypeScript daemon. Today: the SQLite schema and migrations. |
+| `packages/daemon` | Node/TypeScript daemon: schema, ingest pipeline, hybrid search, `lsd` CLI. |
 | `packages/fieldkit` | Measurements run on the PC: census and spikes S1–S6. |
 | `worker` | Python extraction worker (PDF, docx, text, code, OCR). |
 | `fixtures` | Synthetic corpus, retrieval queries and Laya facet labels. All invented. |

@@ -2,15 +2,24 @@
   "name": "@local-search/daemon",
   "private": true,
   "type": "module",
+  "bin": {
+    "lsd": "./src/cli.ts"
+  },
   "exports": {
-    "./db": "./src/db/index.ts"
+    "./db": "./src/db/index.ts",
+    "./shared/*": "./src/shared/*.ts",
+    "./ingest": "./src/ingest/index.ts",
+    "./search": "./src/search/index.ts",
+    "./embed": "./src/embed/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lsd": "tsx src/cli.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.1.1",
+    "node-llama-cpp": "^3.22.3",
     "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {

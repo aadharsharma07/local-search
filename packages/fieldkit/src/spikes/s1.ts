@@ -1,6 +1,6 @@
 import type { FieldkitConfig } from "../config.ts";
 import type { SpikeResult } from "../report.ts";
-import { WorkerClient } from "../worker.ts";
+import { WorkerClient } from "@local-search/daemon/shared/worker";
 
 type Check = { ok: boolean; detail: string };
 

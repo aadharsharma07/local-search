@@ -1,12 +1,12 @@
 import Database from "better-sqlite3";
 import { basename, normalize } from "node:path";
-import { chunkText } from "../chunk.ts";
+import { chunkText } from "@local-search/daemon/shared/chunk";
 import type { FieldkitConfig } from "../config.ts";
 import { indexable, sample, type Corpus } from "../corpus.ts";
 import { cosine, EMBEDDERS, loadModel, type EmbeddingCandidate } from "../models.ts";
 import { round, type SpikeResult } from "../report.ts";
 import { scoreRankings, type TestSet } from "../testset.ts";
-import type { WorkerClient } from "../worker.ts";
+import type { WorkerClient } from "@local-search/daemon/shared/worker";
 
 export interface Doc {
   path: string;

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { FieldkitConfig } from "../config.ts";
 import { indexable, sample, type Corpus, type CorpusFile } from "../corpus.ts";
 import { quantile, round, type SpikeResult } from "../report.ts";
-import type { ExtractResult, WorkerClient } from "../worker.ts";
+import type { ExtractResult, WorkerClient } from "@local-search/daemon/shared/worker";
 
 const MIN_USABLE = 0.9; // share of sampled files with usable text
 const MIN_CHARS = 40;

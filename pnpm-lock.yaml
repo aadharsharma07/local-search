@@ -26,6 +26,9 @@ importers:
       better-sqlite3:
         specifier: ^13.1.1
         version: 13.1.1
+      node-llama-cpp:
+        specifier: ^3.22.3
+        version: 3.22.3(typescript@5.9.3)
       sqlite-vec:
         specifier: ^0.1.9
         version: 0.1.9
@@ -36,6 +39,9 @@ importers:
 
   packages/fieldkit:
     dependencies:
+      '@local-search/daemon':
+        specifier: workspace:*
+        version: link:../daemon
       '@receptron/laya':
         specifier: ^0.2.0
         version: 0.2.0

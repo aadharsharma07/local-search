@@ -1,6 +1,6 @@
 import type { FieldkitConfig } from "../config.ts";
 import { indexable, sample, type Corpus } from "../corpus.ts";
-import { hostOf, readOrigin } from "../platform.ts";
+import { hostOf, readOrigin } from "@local-search/daemon/shared/platform";
 import { round, type SpikeResult } from "../report.ts";
 
 const SIZE_BUCKETS: [string, number][] = [

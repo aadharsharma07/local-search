@@ -1,8 +1,8 @@
 import { basename } from "node:path";
 import type { FieldkitConfig } from "./config.ts";
-import { INDEXED_KINDS, kindFor, type Kind } from "./kinds.ts";
-import { walkAll, type WalkEntry, type WalkStats } from "./walk.ts";
-import type { WorkerClient } from "./worker.ts";
+import { INDEXED_KINDS, kindFor, type Kind } from "@local-search/daemon/shared/kinds";
+import { walkAll, type WalkEntry, type WalkStats } from "@local-search/daemon/shared/walk";
+import type { WorkerClient } from "@local-search/daemon/shared/worker";
 
 export interface CorpusFile extends WalkEntry {
   kind: Kind;
