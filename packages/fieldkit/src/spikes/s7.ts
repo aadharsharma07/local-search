@@ -1,6 +1,6 @@
 import type { FieldkitConfig } from "../config.ts";
 import { loadModel } from "../models.ts";
-import { quantile, round, type SpikeResult } from "../report.ts";
+import { nice, quantile, type SpikeResult } from "../report.ts";
 
 /** Query expansion (qmd's fine-tune) and the general model for labels, typed records, answers. */
 export const GENERATORS = [
@@ -17,8 +17,9 @@ const PROMPT =
   "Context: personal files on a Windows PC, including receipts, bills, tax forms, notes and screenshots.\n";
 
 /** S7: text generation speed on this GPU, which decides whether expansion can run per query. */
-export async function s7(cfg: FieldkitConfig, opts: { tokens?: number } = {}): Promise<Omit<SpikeResult, "id" | "title" | "ms">> {
+export async function s7(cfg: FieldkitConfig, opts: { tokens?: number; runs?: number } = {}): Promise<Omit<SpikeResult, "id" | "title" | "ms">> {
   const tokens = opts.tokens ?? 120;
+  const runs = Math.max(2, opts.runs ?? 3); // first run is warm-up
   const { LlamaCompletion } = await import("node-llama-cpp");
   const results: Record<string, unknown> = {};
   let expansionMs: number | null = null;
@@ -29,7 +30,7 @@ export async function s7(cfg: FieldkitConfig, opts: { tokens?: number } = {}): P
       const ctx = await model.createContext({ contextSize: 2048 });
       const ttft: number[] = [];
       const decode: number[] = [];
-      for (let run = 0; run < 3; run++) {
+      for (let run = 0; run < runs; run++) {
         const seq = ctx.getSequence();
         const completion = new LlamaCompletion({ contextSequence: seq });
         const t0 = performance.now();
@@ -58,7 +59,7 @@ export async function s7(cfg: FieldkitConfig, opts: { tokens?: number } = {}): P
       const d = quantile(decode, 0.5);
       const ms100 = t + (EXPANSION_TOKENS / d) * 1000;
       if (g.id === "qmd-expansion-1.7b") expansionMs = ms100;
-      results[g.id] = { role: g.role, ttftMs: Math.round(t), decodeTokPerSec: round(d), msFor100Tokens: Math.round(ms100) };
+      results[g.id] = { role: g.role, ttftMs: Math.round(t), decodeTokPerSec: nice(d), msFor100Tokens: Math.round(ms100) };
     } catch (e) {
       results[g.id] = { role: g.role, error: (e as Error).message.slice(0, 300) };
     }

@@ -40,7 +40,10 @@ export async function s1(cfg: FieldkitConfig): Promise<Omit<SpikeResult, "id" | 
   checks["node-llama-cpp"] = await check(async () => {
     const { gpuInfo } = await import("../models.ts");
     const g = await gpuInfo();
-    return `backend ${g.backend}; ${g.devices.join(", ") || "no GPU device"}; VRAM ${g.vramTotalGb} GB`;
+    const detail = `backend ${g.backend}; ${g.devices.join(", ") || "no GPU device"}; VRAM ${g.vramTotalGb} GB`;
+    // On the PC a CPU fallback makes every model number meaningless (CI runners are CPU-only).
+    if (g.backend === "cpu" && !process.env.CI) throw new Error(`llama.cpp is not using the GPU (${detail}). Update the AMD driver and rerun s1.`);
+    return detail;
   });
 
   checks["onnxruntime-node (Laya runtime)"] = await check(async () => {

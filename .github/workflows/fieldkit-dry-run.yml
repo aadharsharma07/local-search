@@ -55,6 +55,7 @@ jobs:
         run: pnpm fieldkit run --fixtures --quick --fail-on crash --skip "${{ inputs.skip }}"
 
       - name: Index and bench the fixtures with the real embedder
+        if: ${{ !cancelled() }}
         run: |
           DB="$RUNNER_TEMP/dry-run.sqlite"
           pnpm lsd index --db "$DB" --roots "$GITHUB_WORKSPACE/fixtures/corpus" --embedder gemma

@@ -1,6 +1,6 @@
 import type { FieldkitConfig } from "../config.ts";
 import { EMBEDDERS, gpuInfo, loadModel, RERANKER_URI } from "../models.ts";
-import { quantile, round, type SpikeResult } from "../report.ts";
+import { nice, quantile, round, type SpikeResult } from "../report.ts";
 
 // Pass criteria. Embedding cost is ~2 x params x tokens, so raw chunks/s is the wrong target:
 // what matters is whether the first full index finishes overnight and queries stay fast.
@@ -51,7 +51,7 @@ export async function s2(
   }
   const embedPerSec = n / ((performance.now() - t0) / 1000);
   const qTimes: number[] = [];
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < (opts.quick ? 3 : 20); i++) {
     const q0 = performance.now();
     await ctx.getEmbeddingFor(embedder.query(`where did I buy that office chair ${i}`));
     qTimes.push(performance.now() - q0);
@@ -95,7 +95,7 @@ export async function s2(
   return {
     verdict: pass ? "PASS" : "FAIL",
     summary:
-      `${gpu.backend}: ${round(embedPerSec)} chunks/s → first index ≈${round(indexHours)} h for ${estChunks.toLocaleString("en-US")} chunks (need ≤${MAX_INDEX_HOURS}); ` +
+      `${gpu.backend}: ${nice(embedPerSec)} chunks/s → first index ≈${nice(indexHours)} h for ${estChunks.toLocaleString("en-US")} chunks (need ≤${MAX_INDEX_HOURS}); ` +
       `query embed ${round(queryEmbedMs)} ms (≤${MAX_QUERY_EMBED_MS}); rerank ${RERANK_DOCS} snippets ${rerankPlanned} ms (≤${MAX_RERANK_MS})`,
     data: {
       gpu,
@@ -103,10 +103,10 @@ export async function s2(
       dims,
       chunks: n,
       tokensPerChunk,
-      embedPerSec: round(embedPerSec),
+      embedPerSec: nice(embedPerSec),
       embedTokensPerSec: Math.round(embedPerSec * tokensPerChunk),
       queryEmbedMs: round(queryEmbedMs),
-      indexEstimate: { chunks: estChunks, fromS5: Boolean(opts.estimatedChunks), hours: round(indexHours) },
+      indexEstimate: { chunks: estChunks, fromS5: Boolean(opts.estimatedChunks), hours: nice(indexHours) },
       rerank: { plannedMs: rerankPlanned, docs: RERANK_DOCS, snippetChars: SNIPPET_CHARS, variantsMs: rerankVariants },
       criteria: { maxIndexHours: MAX_INDEX_HOURS, maxQueryEmbedMs: MAX_QUERY_EMBED_MS, maxRerankMs: MAX_RERANK_MS },
     },

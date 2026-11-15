@@ -154,11 +154,11 @@ async function main() {
   const runners: Record<SpikeId, () => Promise<Omit<SpikeResult, "id" | "title" | "ms">>> = {
     census: () => census(cfg, corpus!),
     s1: () => s1(cfg),
-    s2: () => s2(cfg, { chunks: quick ? 10 : 300, quick, estimatedChunks: estChunks, log }),
+    s2: () => s2(cfg, { chunks: quick ? 3 : 300, quick, estimatedChunks: estChunks, log }),
     s3: async () => s3(cfg, getTestset(), await getEvalDocs(), log),
     s4: () => s4({ testsetPath: cfg.testsetPath, limit: quick ? 8 : undefined }),
     s4b: () => s4b(cfg, { testsetPath: cfg.testsetPath, embedderId: values.pick }),
-    s7: () => s7(cfg, { tokens: quick ? 16 : undefined }),
+    s7: () => s7(cfg, quick ? { tokens: 8, runs: 2 } : {}),
     s5: () => s5(cfg, corpus!, worker, log),
     s6: async () => s6(cfg, getTestset(), await getEvalDocs(), log),
   };

@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { arch, cpus, platform, release, totalmem } from "node:os";
+import { arch, cpus, homedir, platform, release, totalmem } from "node:os";
 import { join } from "node:path";
 
 export type Verdict = "PASS" | "FAIL" | "SKIP" | "INFO";
@@ -48,6 +48,9 @@ export function quantile(xs: number[], q: number): number {
 
 export const round = (x: number, d = 1) => Math.round(x * 10 ** d) / 10 ** d;
 
+/** Like round(), but keeps small values readable (0.042 instead of 0). */
+export const nice = (x: number) => (x !== 0 && Math.abs(x) < 1 ? Number(x.toPrecision(2)) : round(x));
+
 export async function timed(
   id: string,
   title: string,
@@ -65,13 +68,25 @@ export async function timed(
   }
 }
 
+/**
+ * Replace the home folder (which contains the Windows user name) with ~ everywhere in a
+ * serialized report: error messages and crash logs can contain full paths.
+ */
+export function redactHome(text: string, home = homedir()): string {
+  if (!home || home.length < 3) return text;
+  const escape = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Raw, forward-slash and JSON-escaped spellings, matched case-insensitively (Windows paths).
+  const forms = [...new Set([home, home.replace(/\\/g, "/"), JSON.stringify(home).slice(1, -1)])].sort((a, b) => b.length - a.length);
+  return text.replace(new RegExp(forms.map(escape).join("|"), "gi"), "~");
+}
+
 export function writeReport(report: Report, outDir: string): { json: string; md: string } {
   const stamp = report.createdAt.replace(/[:.]/g, "-").slice(0, 19);
   const dir = join(outDir, stamp);
   mkdirSync(dir, { recursive: true });
   const json = join(dir, "report.json");
   const md = join(dir, "summary.md");
-  writeFileSync(json, JSON.stringify(report, null, 2));
+  writeFileSync(json, redactHome(JSON.stringify(report, null, 2)));
   const m = report.machine;
   const lines = [
     `# Field kit report — ${report.createdAt.slice(0, 16).replace("T", " ")}`,
@@ -84,6 +99,6 @@ export function writeReport(report: Report, outDir: string): { json: string; md:
     "",
     "Full numbers are in report.json. This report contains aggregate numbers only: no file names, paths or contents.",
   ];
-  writeFileSync(md, lines.join("\n") + "\n");
+  writeFileSync(md, redactHome(lines.join("\n") + "\n"));
   return { json, md };
 }

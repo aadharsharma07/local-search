@@ -160,3 +160,14 @@ describe("helpers", () => {
     expect(parseQmdJson("no results")).toEqual([]);
   });
 });
+
+describe("report privacy", () => {
+  it("replaces the home folder in every spelling", async () => {
+    const { redactHome } = await import("../src/report.ts");
+    const home = "C:\\Users\\Aadhar";
+    const text = JSON.stringify({ e: "ENOENT C:\\Users\\Aadhar\\Documents\\x.pdf", f: "c:/Users/Aadhar/y.png" });
+    const out = redactHome(text, home);
+    expect(out).not.toMatch(/Aadhar/i);
+    expect(out).toContain("~");
+  });
+});
