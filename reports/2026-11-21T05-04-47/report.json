@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "createdAt": "2026-11-21T05:04:47.428Z",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 7 5700X 8-Core Processor             ",
+    "cores": 16,
+    "ramGb": 32,
+    "node": "v24.16.0"
+  },
+  "results": [
+    {
+      "id": "s1",
+      "title": "Native dependencies load",
+      "verdict": "PASS",
+      "summary": "better-sqlite3: sqlite 3.54.1 · sqlite-vec: vec v0.1.9 · node-llama-cpp: backend vulkan · onnxruntime-node: onnxruntime 1.31.1 · python: python 3.12.13 on win32",
+      "data": {
+        "better-sqlite3 + FTS5": {
+          "ok": true,
+          "detail": "sqlite 3.54.1"
+        },
+        "sqlite-vec": {
+          "ok": true,
+          "detail": "vec v0.1.9"
+        },
+        "node-llama-cpp": {
+          "ok": true,
+          "detail": "backend vulkan; AMD Radeon RX 6600M; VRAM 8 GB"
+        },
+        "onnxruntime-node (Laya runtime)": {
+          "ok": true,
+          "detail": "onnxruntime 1.31.1"
+        },
+        "python worker": {
+          "ok": true,
+          "detail": "python 3.12.13 on win32; OCR engines: windows, rapidocr"
+        }
+      },
+      "ms": 3190
+    }
+  ]
+}

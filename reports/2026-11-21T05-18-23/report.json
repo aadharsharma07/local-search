@@ -1,0 +1,274 @@
+{
+  "version": 1,
+  "createdAt": "2026-11-21T05:18:23.861Z",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 7 5700X 8-Core Processor             ",
+    "cores": 16,
+    "ramGb": 32,
+    "node": "v24.16.0"
+  },
+  "results": [
+    {
+      "id": "census",
+      "title": "Corpus census",
+      "verdict": "INFO",
+      "summary": "10,887 files (20.16 GB) in 4 folders; 8,120 indexable in v1 (4337 text, 1754 code, 253 document, 1776 image); 217 cloud-only",
+      "data": {
+        "roots": {
+          "found": [
+            "Documents",
+            "Downloads",
+            "Desktop",
+            "Pictures"
+          ],
+          "missing": [],
+          "filesPerRoot": {
+            "Documents": 443,
+            "Downloads": 5452,
+            "Desktop": 4390,
+            "Pictures": 602
+          }
+        },
+        "totals": {
+          "files": 10887,
+          "gb": 20.16
+        },
+        "indexable": {
+          "files": 8120,
+          "byKind": {
+            "text": 4337,
+            "code": 1754,
+            "document": 253,
+            "image": 1776
+          }
+        },
+        "byKind": {
+          "other": {
+            "files": 2640,
+            "mb": 8826.7
+          },
+          "text": {
+            "files": 4337,
+            "mb": 26.4
+          },
+          "code": {
+            "files": 1759,
+            "mb": 40.8
+          },
+          "document": {
+            "files": 260,
+            "mb": 216
+          },
+          "image": {
+            "files": 1776,
+            "mb": 274
+          },
+          "archive": {
+            "files": 84,
+            "mb": 11144.9
+          },
+          "media": {
+            "files": 31,
+            "mb": 112.9
+          }
+        },
+        "topExtensions": [
+          {
+            "ext": ".md",
+            "files": 3731,
+            "mb": 10.6
+          },
+          {
+            "ext": ".png",
+            "files": 1276,
+            "mb": 227.4
+          },
+          {
+            "ext": ".pyc",
+            "files": 846,
+            "mb": 14.2
+          },
+          {
+            "ext": ".ts",
+            "files": 733,
+            "mb": 3.9
+          },
+          {
+            "ext": ".json",
+            "files": 473,
+            "mb": 7.1
+          },
+          {
+            "ext": "(none)",
+            "files": 391,
+            "mb": 3309.4
+          },
+          {
+            "ext": ".gif",
+            "files": 379,
+            "mb": 1.9
+          },
+          {
+            "ext": ".tsx",
+            "files": 317,
+            "mb": 2
+          },
+          {
+            "ext": ".pdf",
+            "files": 235,
+            "mb": 186.7
+          },
+          {
+            "ext": ".swift",
+            "files": 220,
+            "mb": 1.7
+          },
+          {
+            "ext": ".replay",
+            "files": 217,
+            "mb": 4.5
+          },
+          {
+            "ext": ".rpyc",
+            "files": 203,
+            "mb": 2.5
+          },
+          {
+            "ext": ".rpy",
+            "files": 198,
+            "mb": 8.2
+          },
+          {
+            "ext": ".py",
+            "files": 193,
+            "mb": 2.9
+          },
+          {
+            "ext": ".woff",
+            "files": 166,
+            "mb": 24.4
+          },
+          {
+            "ext": ".sql",
+            "files": 90,
+            "mb": 0.4
+          },
+          {
+            "ext": ".zip",
+            "files": 82,
+            "mb": 11122.4
+          },
+          {
+            "ext": ".dll",
+            "files": 79,
+            "mb": 126.1
+          },
+          {
+            "ext": ".sh",
+            "files": 68,
+            "mb": 0.2
+          },
+          {
+            "ext": ".webp",
+            "files": 60,
+            "mb": 9.6
+          },
+          {
+            "ext": ".assets",
+            "files": 59,
+            "mb": 145.1
+          },
+          {
+            "ext": ".jpg",
+            "files": 56,
+            "mb": 14.5
+          },
+          {
+            "ext": ".xml",
+            "files": 49,
+            "mb": 3.1
+          },
+          {
+            "ext": ".resource",
+            "files": 49,
+            "mb": 64.7
+          },
+          {
+            "ext": ".js",
+            "files": 46,
+            "mb": 25.3
+          },
+          {
+            "ext": ".exe",
+            "files": 41,
+            "mb": 2555.4
+          },
+          {
+            "ext": ".txt",
+            "files": 37,
+            "mb": 1.2
+          },
+          {
+            "ext": ".css",
+            "files": 34,
+            "mb": 0.7
+          },
+          {
+            "ext": ".ttf",
+            "files": 30,
+            "mb": 43.7
+          },
+          {
+            "ext": ".bak",
+            "files": 30,
+            "mb": 77.3
+          }
+        ],
+        "sizeBuckets": {
+          "<10KB": 7496,
+          "10-100KB": 2008,
+          "100KB-1MB": 781,
+          "1-10MB": 415,
+          ">=10MB": 187
+        },
+        "overSizeLimit": 187,
+        "modifiedByYear": {
+          "2013": 1,
+          "2018": 2,
+          "2019": 3,
+          "2020": 613,
+          "2021": 53,
+          "2022": 13,
+          "2023": 97,
+          "2024": 28,
+          "2025": 433,
+          "2026": 9644
+        },
+        "walk": {
+          "dirs": 1438,
+          "links": 0,
+          "denied": 0,
+          "excludedDirs": 63,
+          "maxDepth": 10
+        },
+        "paths": {
+          "longPaths": 0,
+          "nonAscii": 4
+        },
+        "cloudPlaceholders": {
+          "check": "windows",
+          "count": 217
+        },
+        "downloadOrigin": {
+          "sampled": 300,
+          "withOrigin": 10,
+          "withHost": 10
+        }
+      },
+      "ms": 41
+    }
+  ]
+}
