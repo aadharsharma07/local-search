@@ -32,6 +32,33 @@ describe("walk", () => {
     if (linked) expect(stats.links).toBe(1);
   });
 
+  it("skips program and code-project folders but never the root", () => {
+    const root = mkdtempSync(join(tmpdir(), "fk-prog-"));
+    writeFileSync(join(root, "package.json"), "{}"); // marker at the root: root is still walked
+    writeFileSync(join(root, "setup.exe"), "x"); // lone installer: not a program folder
+    mkdirSync(join(root, "repo", "docs"), { recursive: true });
+    writeFileSync(join(root, "repo", "pyproject.toml"), "");
+    writeFileSync(join(root, "repo", "docs", "notes.md"), "x");
+    mkdirSync(join(root, "Game"));
+    writeFileSync(join(root, "Game", "engine.DLL"), "x");
+    writeFileSync(join(root, "Game", "readme.txt"), "x");
+    mkdirSync(join(root, "School"));
+    writeFileSync(join(root, "School", "lecture.pdf"), "x");
+    // A game nested inside a personal folder: .exe next to lib/ and game/ marks its root.
+    mkdirSync(join(root, "Pics", "SomeGame-win", "lib"), { recursive: true });
+    mkdirSync(join(root, "Pics", "SomeGame-win", "game"));
+    writeFileSync(join(root, "Pics", "SomeGame-win", "SomeGame.exe"), "x");
+    writeFileSync(join(root, "Pics", "SomeGame-win", "SomeGame.py"), "x");
+    writeFileSync(join(root, "Pics", "holiday.jpg"), "x");
+    // Packaged game files mark a folder even without an .exe.
+    mkdirSync(join(root, "Pics", "assets"));
+    writeFileSync(join(root, "Pics", "assets", "archive.rpa"), "x");
+    writeFileSync(join(root, "Pics", "assets", "cover.png"), "x");
+    const { files, stats } = walkAll([root], []);
+    expect(files.map((f) => f.ext).sort()).toEqual([".exe", ".jpg", ".json", ".pdf"]);
+    expect(stats.programDirs).toBe(4);
+  });
+
   it("handles a missing root without throwing", () => {
     const { files, stats } = walkAll([join(tmpdir(), "does-not-exist-fk")], []);
     expect(files).toHaveLength(0);

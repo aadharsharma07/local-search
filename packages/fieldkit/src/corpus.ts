@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { FieldkitConfig } from "./config.ts";
 import { INDEXED_KINDS, kindFor, type Kind } from "@local-search/daemon/shared/kinds";
-import { walkAll, type WalkEntry, type WalkStats } from "@local-search/daemon/shared/walk";
+import { emptyWalkStats, walkAll, type WalkEntry, type WalkStats } from "@local-search/daemon/shared/walk";
 import type { WorkerClient } from "@local-search/daemon/shared/worker";
 
 export interface CorpusFile extends WalkEntry {
@@ -21,7 +21,7 @@ export interface Corpus {
 /** One walk of the configured roots, shared by the census and the spikes. */
 export async function scanCorpus(cfg: FieldkitConfig, worker?: WorkerClient): Promise<Corpus> {
   const files: CorpusFile[] = [];
-  const total: WalkStats = { dirs: 0, links: 0, denied: 0, excludedDirs: 0 };
+  const total: WalkStats = emptyWalkStats();
   const rootsFound: string[] = [];
   const rootsMissing: string[] = [];
   for (const root of cfg.roots) {
@@ -35,6 +35,7 @@ export async function scanCorpus(cfg: FieldkitConfig, worker?: WorkerClient): Pr
     total.links += stats.links;
     total.denied += stats.denied;
     total.excludedDirs += stats.excludedDirs;
+    total.programDirs += stats.programDirs;
     for (const f of fs) files.push({ ...f, kind: kindFor(f.ext), root: basename(root), cloud: false });
   }
 

@@ -6,7 +6,7 @@ import type { Embedder } from "../embed/index.ts";
 import { chunkText } from "../shared/chunk.ts";
 import { INDEXED_KINDS, kindFor } from "../shared/kinds.ts";
 import { readOrigin } from "../shared/platform.ts";
-import { walk, type WalkStats } from "../shared/walk.ts";
+import { emptyWalkStats, walk, type WalkStats } from "../shared/walk.ts";
 import type { WorkerClient } from "../shared/worker.ts";
 
 export const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
@@ -58,7 +58,7 @@ interface FileRow {
 export async function scan(db: DB, opts: ScanOptions): Promise<ScanResult> {
   const now = opts.now ?? Date.now();
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
-  const stats: WalkStats = { dirs: 0, links: 0, denied: 0, excludedDirs: 0 };
+  const stats: WalkStats = emptyWalkStats();
   const presentRoots: string[] = [];
   const missingRoots: string[] = [];
   const entries: { path: string; ext: string; size: number; mtime: number }[] = [];
