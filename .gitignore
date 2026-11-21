@@ -12,3 +12,7 @@ fieldkit-out/
 .DS_Store
 fieldkit.yaml
 *.egg-info/
+
+# Field kit reports describe the PC and its files: never commit them.
+reports/*
+!reports/README.md

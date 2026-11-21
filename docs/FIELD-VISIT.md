@@ -1,8 +1,9 @@
 # Field visit checklist (home PC)
 
 Each visit to the Windows PC is a short scripted session. It measures everything that needs the
-real GPU and your real files, then you commit the reports. Reports hold aggregate numbers only.
-Your files, the private test set and the S5 review file never leave the PC.
+real GPU and your real files. Nothing about the PC or its files leaves it: reports, the private
+test set and the S5 review file all stay local (`reports/` is gitignored). Only decisions written
+up from the results go into the repo.
 
 Visit 1 takes about 2–3 hours, mostly model downloads and unattended runs. You need to be at
 the keyboard for about 40 minutes of it.
@@ -19,7 +20,18 @@ Install, if missing:
 
 - **Git**: https://git-scm.com/download/win
 - **Node.js 24 LTS**: https://nodejs.org (the installer adds `corepack`)
-- **Python 3.12** from https://python.org. Tick "Add python.exe to PATH".
+- **Python 3.12** from https://python.org. Tick "Add python.exe to PATH". (Or, if `uv` is
+  installed: `uv python install 3.12`, then use `uv venv --python 3.12 worker\.venv` below.)
+- **Visual Studio 2022 Build Tools** with the C++ workload *and* the ClangCL toolset.
+  `better-sqlite3` 13 ships no Windows prebuilts, so `pnpm install` compiles it, and Node 24
+  native builds use ClangCL. Without ClangCL the build fails with `MSB8020 ... ClangCL`.
+
+  ```powershell
+  winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --includeRecommended"
+  ```
+
+Clone outside OneDrive (for example `$HOME\projects`, as below): OneDrive would otherwise sync
+`node_modules`, the venv and every model download.
 
 Then, in PowerShell:
 
@@ -40,8 +52,11 @@ Check that Windows OCR has an English language pack: Settings → Time & languag
 English should list "Optical character recognition" among its features. If it doesn't, S5 still
 runs with the other OCR engines and reports that Windows OCR was missing.
 
-By default the field kit scans Documents, Downloads, Desktop and Pictures. To change that, copy
-`fieldkit.example.yaml` to `fieldkit.yaml` (gitignored) and edit `roots`.
+By default the field kit scans Documents, Downloads, Desktop and Pictures, wherever Windows has
+put them (OneDrive folder backup moves them to `~\OneDrive\...`; this is read from the registry).
+To change that, copy `fieldkit.example.yaml` to `fieldkit.yaml` (gitignored) and edit `roots`.
+Use `excludeDirs` to skip folders that aren't personal files, for example work
+folders. Program, game and code-project folders are skipped automatically.
 
 ## 2. Write the private test set (Visit 1, about 20 minutes)
 
@@ -95,17 +110,14 @@ pnpm lsd bench
 Embeddings use embeddinggemma for now. If S3 picked a different model, note it; switching later
 re-embeds automatically.
 
-## 5. Look, then commit the reports
+## 5. Look, then write up the decisions
 
-- Read `reports\<timestamp>\summary.md` and `reports\<timestamp>-bench\summary.md`.
+- Read `reports\<timestamp>\summary.md` and `reports\<timestamp>-bench\summary.md`. They stay on
+  the PC: they describe the machine and your folders, so they are gitignored and never committed.
 - Skim the private review at `%USERPROFILE%\.local-search\private\s5-review-<date>.md` to check that
-  the OCR text looks right. Do not commit it.
-
-```powershell
-git add reports
-git commit -m "Field report: visit 1"
-git push
-```
+  the OCR text looks right.
+- Write the decisions each spike settles (see the table below) in your own words, without machine
+  details, file counts or folder names, and commit that.
 
 ## What each spike decides
 

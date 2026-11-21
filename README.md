@@ -15,7 +15,7 @@ for the first real measurements on the PC; see the schedule in [docs/ARCHITECTUR
 | `packages/fieldkit` | Measurements run on the PC: census and spikes S1–S6. |
 | `worker` | Python extraction worker (PDF, docx, text, code, OCR). |
 | `fixtures` | Synthetic corpus, retrieval queries and Laya facet labels. All invented. |
-| `reports` | Field kit reports from the PC. Aggregate numbers only. |
+| `reports` | Field kit reports. Written on the PC and gitignored: they never leave it. |
 | `ui` | Search popup (Sprint 3). |
 
 ## Develop (Mac)

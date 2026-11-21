@@ -6,7 +6,7 @@ version that lives next to the code.
 
 ## Scope (v1)
 
-- Personal tool on one Windows 11 PC (Ryzen 5700X, RX 6600 XT 8 GB, 32 GB RAM).
+- Personal tool on one mid-range Windows 11 desktop with an 8 GB AMD GPU.
 - Job: find the file. Ranked results in ≤300 ms for filename-like queries, ≤700 ms for semantic ones.
 - Indexes PDF, docx, txt/md, code and images (OCR). Not email, audio, video, archives or cloud-only files.
 - Quality bar: recall@5 ≥ 85% on the private test set, beating Windows Search and qmd.
@@ -51,4 +51,5 @@ Development follows the visits, because only the PC can answer the open question
 ## Development model
 
 Code on the Mac (no models are run there). CI runs tests on macOS and Windows on every push. Each visit to the PC
-runs `pnpm fieldkit run` (see `docs/FIELD-VISIT.md`) and commits an aggregate-only report.
+runs `pnpm fieldkit run` (see `docs/FIELD-VISIT.md`). Reports stay on the PC; only the decisions
+written up from them are committed.
