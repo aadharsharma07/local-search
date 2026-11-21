@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parse } from "yaml";
+import { knownFolders } from "@local-search/daemon/shared/platform";
 
 export interface FieldkitConfig {
   /** Folders to scan. Defaults to the usual user folders. */
@@ -44,7 +45,7 @@ export function defaultConfig(): FieldkitConfig {
       ? join(REPO_ROOT, "worker", ".venv", "Scripts", "python.exe")
       : join(REPO_ROOT, "worker", ".venv", "bin", "python");
   return {
-    roots: ["Documents", "Downloads", "Desktop", "Pictures"].map((d) => join(home, d)),
+    roots: knownFolders(["Documents", "Downloads", "Desktop", "Pictures"]),
     excludeDirs: DEFAULT_EXCLUDES,
     maxFileBytes: 10 * 1024 * 1024,
     testsetPath: join(home, ".local-search", "testset.json"),
