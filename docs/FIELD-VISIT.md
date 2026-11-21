@@ -19,7 +19,18 @@ Install, if missing:
 
 - **Git**: https://git-scm.com/download/win
 - **Node.js 24 LTS**: https://nodejs.org (the installer adds `corepack`)
-- **Python 3.12** from https://python.org. Tick "Add python.exe to PATH".
+- **Python 3.12** from https://python.org. Tick "Add python.exe to PATH". (Or, if `uv` is
+  installed: `uv python install 3.12`, then use `uv venv --python 3.12 worker\.venv` below.)
+- **Visual Studio 2022 Build Tools** with the C++ workload *and* the ClangCL toolset.
+  `better-sqlite3` 13 ships no Windows prebuilts, so `pnpm install` compiles it, and Node 24
+  native builds use ClangCL. Without ClangCL the build fails with `MSB8020 ... ClangCL`.
+
+  ```powershell
+  winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --includeRecommended"
+  ```
+
+Clone outside OneDrive (for example `$HOME\projects`, as below): OneDrive would otherwise sync
+`node_modules`, the venv and every model download.
 
 Then, in PowerShell:
 
@@ -40,8 +51,11 @@ Check that Windows OCR has an English language pack: Settings → Time & languag
 English should list "Optical character recognition" among its features. If it doesn't, S5 still
 runs with the other OCR engines and reports that Windows OCR was missing.
 
-By default the field kit scans Documents, Downloads, Desktop and Pictures. To change that, copy
-`fieldkit.example.yaml` to `fieldkit.yaml` (gitignored) and edit `roots`.
+By default the field kit scans Documents, Downloads, Desktop and Pictures, wherever Windows has
+put them (OneDrive folder backup moves them to `~\OneDrive\...`; this is read from the registry).
+To change that, copy `fieldkit.example.yaml` to `fieldkit.yaml` (gitignored) and edit `roots`.
+Use `excludeDirs` to skip folders that aren't personal files, such as work repositories on the
+Desktop: they can dominate the census and the first-index estimate.
 
 ## 2. Write the private test set (Visit 1, about 20 minutes)
 

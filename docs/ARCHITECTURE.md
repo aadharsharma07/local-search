@@ -6,7 +6,7 @@ version that lives next to the code.
 
 ## Scope (v1)
 
-- Personal tool on one Windows 11 PC (Ryzen 5700X, RX 6600 XT 8 GB, 32 GB RAM).
+- Personal tool on one Windows 11 PC (Ryzen 5700X, RX 6600M 8 GB, 32 GB RAM).
 - Job: find the file. Ranked results in ≤300 ms for filename-like queries, ≤700 ms for semantic ones.
 - Indexes PDF, docx, txt/md, code and images (OCR). Not email, audio, video, archives or cloud-only files.
 - Quality bar: recall@5 ≥ 85% on the private test set, beating Windows Search and qmd.

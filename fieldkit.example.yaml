@@ -1,12 +1,12 @@
 # Copy to fieldkit.yaml (gitignored) to override defaults. Every key is optional.
 
-# Folders to scan. ~ means your user folder.
-roots:
-  - ~/Documents
-  - ~/Downloads
-  - ~/Desktop
-  - ~/Pictures
-  # - D:/School
+# Folders to scan. ~ means your user folder. Leave this out to use Documents, Downloads, Desktop
+# and Pictures wherever Windows has put them (OneDrive redirection is detected). Setting it
+# replaces that list entirely.
+# roots:
+#   - ~/OneDrive/Documents
+#   - ~/Downloads
+#   - D:/School
 
 # Extra folder names to skip anywhere in the tree (added to the built-in list).
 excludeDirs:

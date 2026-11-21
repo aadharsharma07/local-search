@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { knownFolders } from "./shared/platform.ts";
 
 export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 export const DATA_DIR = join(homedir(), ".local-search");
@@ -11,8 +12,9 @@ export const DEFAULT_EXCLUDES = [
   "My Games", "SteamLibrary", "steamapps", "Epic Games",
 ];
 
+/** The usual user folders, following Windows/OneDrive redirection. */
 export function defaultRoots(): string[] {
-  return ["Documents", "Downloads", "Desktop", "Pictures"].map((d) => join(homedir(), d));
+  return knownFolders(["Documents", "Downloads", "Desktop", "Pictures"]);
 }
 
 export function defaultPython(): string {
