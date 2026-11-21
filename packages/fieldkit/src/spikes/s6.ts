@@ -59,7 +59,13 @@ export async function s6(
   evalDocs.docs.forEach((d, i) => writeFileSync(join(dir, `${i}.md`), `# ${basename(d.path)}\n\n${d.text}\n`));
 
   log("  S6: indexing with qmd (first run downloads ~2 GB of models)");
-  qmd(["collection", "remove", COLLECTION], 120_000);
+  // The first npx call also installs qmd, so it gets a long timeout (a 2-minute one crashed the
+  // CI dry run). Removing a collection that doesn't exist yet is fine to fail.
+  try {
+    qmd(["collection", "remove", COLLECTION], 30 * 60_000);
+  } catch (e) {
+    log(`  S6: could not remove old collection (${(e as Error).message}); continuing`);
+  }
   const add = qmd(["collection", "add", dir, "--name", COLLECTION], 30 * 60_000);
   if (add.code !== 0) throw new Error(`qmd collection add failed: ${(add.err || add.out).slice(-400)}`);
   const embed = qmd(["embed", "-c", COLLECTION, "--timeout", "0"], 4 * 60 * 60_000);
