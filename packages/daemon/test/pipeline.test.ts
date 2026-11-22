@@ -45,7 +45,13 @@ run("ingest + search pipeline", () => {
   it("indexes every fixture, fails only the corrupt PDF, and shares duplicate content", () => {
     const counts = stateCounts(db);
     expect(counts.failed).toBe(1);
-    expect(counts.indexed).toBe(14);
+    expect(counts.indexed).toBe(12);
+    // Code files are not indexed in v1.
+    const code = db.prepare("SELECT state, skip_reason FROM files WHERE ext IN ('.py', '.ps1')").all();
+    expect(code).toEqual([
+      { state: "skipped", skip_reason: "type" },
+      { state: "skipped", skip_reason: "type" },
+    ]);
     const failed = db.prepare("SELECT path, error FROM files WHERE state = 'failed'").get() as { path: string; error: string };
     expect(failed.path).toMatch(/broken-statement\.pdf$/);
     const dup = db
@@ -68,7 +74,7 @@ run("ingest + search pipeline", () => {
   it("finds files by content, by name, and through OCR", async () => {
     expect((await top("banana bread recipe"))[0]).toMatch(/banana bread\.txt$/);
     expect((await top("security deposit pets"))[0]).toMatch(/lease\.pdf$/);
-    expect((await top("fuzzy match"))[0]).toMatch(/fuzzy_match\.py$/);
+    expect((await top("dragon art"))[0]).toMatch(/Art[\\/]IMG_0412\.png$/); // no text: found by its folder name
     expect((await top("Lakeview Power statement"))[0]).toMatch(/scan-2024-01-0007\.pdf$/);
     expect((await top("QX7P2L"))[0]).toMatch(/Screenshot 2025-05-11 213344\.png$/);
   });

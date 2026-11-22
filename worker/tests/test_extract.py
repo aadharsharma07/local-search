@@ -79,6 +79,62 @@ def test_screenshot_ocr():
     assert "QX7P2L" in r.text.replace(" ", "")
 
 
+def _meta(r):
+    pages = [p for p in r.pages if p.method == "meta"]
+    assert len(pages) == 1, r.pages
+    return pages[0].text
+
+
+def test_image_metadata_exif(tmp_path):
+    from PIL import Image
+
+    img = Image.new("RGB", (300, 400), "white")
+    exif = Image.Exif()
+    exif[0x010F] = "Pixel"  # Make
+    exif[0x0110] = "7a"  # Model
+    exif[0x010E] = "concert poster"  # ImageDescription
+    exif[0x9C9E] = "poster;music".encode("utf-16-le")  # XPKeywords
+    exif.get_ifd(0x8769)[0x9003] = "2025:06:14 10:20:30"  # DateTimeOriginal
+    path = tmp_path / "IMG_0001.jpg"
+    img.save(path, exif=exif)
+
+    r = extract(path, "none")
+    assert r.ok, r.error
+    meta = _meta(r)
+    for want in ("JPEG photo", "portrait", "taken 2025-06-14", "June 2025", "camera Pixel 7a",
+                 "concert poster", "poster;music"):
+        assert want in meta, meta
+    assert r.content_date is not None
+    assert "IMG_0001" not in meta  # nothing path-derived
+
+
+def test_image_metadata_png_text(tmp_path):
+    from PIL import Image, PngImagePlugin
+
+    info = PngImagePlugin.PngInfo()
+    info.add_text("Software", "Snipping Tool")
+    info.add_text("Title", "flight confirmation")
+    path = tmp_path / "shot.png"
+    Image.new("RGB", (1920, 1080)).save(path, pnginfo=info)
+
+    r = extract(path, "none")
+    meta = _meta(r)
+    assert "PNG image" in meta and "landscape" in meta
+    assert "software: Snipping Tool" in meta and "title: flight confirmation" in meta
+    assert r.content_date is None
+
+
+def test_image_without_metadata_still_gets_meta_page(tmp_path):
+    from PIL import Image
+
+    path = tmp_path / "plain.png"
+    Image.new("RGB", (50, 50)).save(path)
+    r = extract(path, "none")
+    assert r.ok, r.error
+    assert _meta(r).startswith("PNG image. 50x50 pixels, square")
+    assert r.to_json()["content_date"] is None
+
+
 def test_server_protocol():
     reqs = [
         {"id": 1, "op": "ping"},
@@ -116,6 +172,7 @@ def test_cloud_attrs_on_normal_files():
 
 def test_ocr_none_never_loads_a_model():
     img = extract(CORPUS / "Pictures/Screenshots/Screenshot 2025-05-11 213344.png", "none")
-    assert img.ok and img.text == "" and img.pages[0].method == "none"
+    assert img.ok and img.pages[0].text == "" and img.pages[0].method == "none"
+    assert img.text == _meta(img)  # only the metadata page carries text
     scan = extract(CORPUS / "Documents/Bills/scan-2024-01-0007.pdf", "none")
     assert scan.ok and all(p.method == "text" for p in scan.pages)

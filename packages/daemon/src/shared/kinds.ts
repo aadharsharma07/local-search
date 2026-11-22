@@ -13,8 +13,11 @@ add("text", "txt md markdown csv tsv json yaml yml toml ini log xml rst tex org"
 add("media", "mp3 wav flac m4a aac ogg mp4 mkv mov avi webm heic heif raw cr2 nef");
 add("archive", "zip 7z rar tar gz bz2 xz iso");
 
-/** Kinds v1 extracts. media/archive/other are counted by the census but not indexed. */
-export const INDEXED_KINDS: ReadonlySet<Kind> = new Set(["document", "image", "code", "text"]);
+/**
+ * Kinds v1 extracts. code/media/archive/other are counted by the census but not indexed
+ * (code was dropped from v1 after Visit 1; see docs/DECISIONS.md).
+ */
+export const INDEXED_KINDS: ReadonlySet<Kind> = new Set(["document", "image", "text"]);
 
 export function kindFor(ext: string): Kind {
   return MAP[ext.toLowerCase()] ?? "other";

@@ -11,8 +11,6 @@
     { "q": "invoice I sent the bakery", "expected": ["Documents/Work/invoice-0042.docx"] },
     { "q": "what was my rent at the old apartment", "expected": ["Documents/Housing/lease.pdf"] },
     { "q": "eigenvalues lecture notes", "expected": ["Documents/School/MATH 136/lecture-07.md"] },
-    { "q": "python edit distance function", "expected": ["Code/tools/fuzzy_match.py"] },
-    { "q": "script that backs up my photos", "expected": ["Code/scripts/backup-photos.ps1"] },
     { "q": "banana bread recipe", "expected": ["Documents/Notes/banana bread.txt"] },
     { "q": "cafe menu", "expected": ["Documents/Notes/café menu ideas.md"] },
     { "q": "first day in the dorm journal", "expected": ["Documents/Notes/journal-2019.txt"] },

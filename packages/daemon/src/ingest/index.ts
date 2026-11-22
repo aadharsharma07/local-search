@@ -198,7 +198,7 @@ export async function processQueue(db: DB, opts: ProcessOptions): Promise<Proces
   const hasContent = db.prepare("SELECT 1 FROM contents WHERE hash = ?");
   const link = db.prepare("UPDATE files SET content_hash = ?, origin_url = ?, state = 'indexed', error = NULL WHERE id = ?");
   const putContent = db.prepare(
-    "INSERT INTO contents(hash, text, extractor, content_date, extracted_at) VALUES (?, ?, ?, NULL, ?)",
+    "INSERT INTO contents(hash, text, extractor, content_date, extracted_at) VALUES (?, ?, ?, ?, ?)",
   );
   const putChunk = db.prepare("INSERT INTO chunks(content_hash, seq, pos, page, text) VALUES (?, ?, ?, ?, ?)");
   const putVec = db.prepare("INSERT INTO chunk_vecs(chunk_id, embedding) VALUES (?, ?)");
@@ -251,6 +251,7 @@ export async function processQueue(db: DB, opts: ProcessOptions): Promise<Proces
       const pieces: { page: number | null; pos: number; text: string }[] = [];
       let offset = 0;
       for (const p of r.pages) {
+        if (!p.text) continue; // r.text joins only non-empty pages, so empty ones take no space
         for (const c of chunkText(p.text)) pieces.push({ page: p.page, pos: offset + c.pos, text: c.text });
         offset += p.text.length + 2;
       }
@@ -263,7 +264,7 @@ export async function processQueue(db: DB, opts: ProcessOptions): Promise<Proces
         continue;
       }
       db.transaction(() => {
-        putContent.run(hash, r.text, `lsworker ${r.ocr_engine ? `+ocr:${r.ocr_engine}` : ""}`.trim(), Date.now());
+        putContent.run(hash, r.text, `lsworker ${r.ocr_engine ? `+ocr:${r.ocr_engine}` : ""}`.trim(), r.content_date ?? null, Date.now());
         pieces.forEach((p, seq) => {
           const { lastInsertRowid } = putChunk.run(hash, seq, p.pos, p.page, p.text);
           putVec.run(BigInt(lastInsertRowid), vectors[seq]!);

@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from . import ocr
 
-EXTRACTOR_VERSION = "0.1.0"
+EXTRACTOR_VERSION = "0.2.0"  # 0.2.0: image metadata page + content_date
 MIN_PAGE_CHARS = 20  # below this a PDF page is treated as scanned and OCR'd
 OCR_DPI = 200
 
@@ -58,6 +59,7 @@ class Result:
     error: str | None = None
     ms: float = 0.0
     ocr_engine: str | None = None
+    content_date: int | None = None  # unix ms of a date stored inside the file (EXIF), if any
 
     @property
     def text(self) -> str:
@@ -111,6 +113,69 @@ def _pdf(path: Path, res: Result, ocr_name: str) -> None:
             res.ocr_engine = name
 
 
+FORMAT_WORDS = {
+    "JPEG": "JPEG photo image",
+    "PNG": "PNG image",
+    "WEBP": "WebP image",
+    "GIF": "GIF image",
+    "BMP": "bitmap image",
+    "TIFF": "TIFF image scan",
+}
+# EXIF tags (base IFD and Exif sub-IFD) worth indexing as text.
+_EXIF_TEXT = {0x010E: "description", 0x013B: "artist", 0x9286: "comment"}
+_EXIF_XP = {0x9C9B: "title", 0x9C9F: "subject", 0x9C9E: "keywords", 0x9C9C: "comment"}
+_PNG_TEXT_KEYS = ("title", "description", "comment", "software", "author", "subject", "keywords")
+
+
+def _exif_date(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw.strip()[:19], "%Y:%m:%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _image_meta(img, res: Result) -> str:
+    """Searchable text from metadata stored inside the image itself.
+
+    Only content-intrinsic data: texts are keyed by content hash, so nothing derived from the
+    path (file or folder names) may go in here. No GPS/location.
+    """
+    parts: list[str] = [FORMAT_WORDS.get(img.format or "", f"{img.format or ''} image".strip())]
+    w, h = img.size
+    parts.append(f"{w}x{h} pixels, {'portrait' if h > w else 'landscape' if w > h else 'square'}")
+
+    exif = img.getexif()
+    sub = exif.get_ifd(0x8769) if exif else {}
+    taken = _exif_date(sub.get(0x9003) or exif.get(0x0132))  # DateTimeOriginal, else DateTime
+    if taken:
+        parts.append(f"taken {taken:%Y-%m-%d}, {taken:%B %Y}")
+        res.content_date = int(taken.timestamp() * 1000)
+    camera = " ".join(str(exif.get(t, "")).strip() for t in (0x010F, 0x0110)).strip()  # Make, Model
+    if camera:
+        parts.append(f"camera {camera}")
+    for tag, label in _EXIF_TEXT.items():
+        v = exif.get(tag) or sub.get(tag)
+        if isinstance(v, bytes):  # UserComment carries an 8-byte charset header
+            v = v[8:].decode("utf-8", errors="ignore") if v[:8] in (b"ASCII\0\0\0", b"UNICODE\0") else ""
+        if isinstance(v, str) and v.strip(" \x00"):
+            parts.append(f"{label}: {v.strip(chr(0)).strip()}")
+    for tag, label in _EXIF_XP.items():
+        v = exif.get(tag)
+        if isinstance(v, (bytes, tuple)):  # Windows XP* tags: UTF-16LE bytes
+            v = bytes(v).decode("utf-16-le", errors="ignore").strip("\x00 ")
+            if v:
+                parts.append(f"{label}: {v}")
+
+    info = {k.lower(): v for k, v in (getattr(img, "text", None) or {}).items() if isinstance(v, str)}
+    for key in _PNG_TEXT_KEYS:
+        v = info.get(key, "").strip()
+        if v:
+            parts.append(f"{key}: {v[:300]}")
+    return ". ".join(parts)
+
+
 def _image(path: Path, res: Result, ocr_name: str) -> None:
     from PIL import Image
 
@@ -119,15 +184,18 @@ def _image(path: Path, res: Result, ocr_name: str) -> None:
         with Image.open(path) as img:
             img.verify()
         res.pages.append(Page(None, "", "none"))
-        return
-    engine = ocr.resolve(ocr_name)
-    if engine is None:
-        raise RuntimeError("no OCR engine available")
-    name, fn = engine
+    else:
+        engine = ocr.resolve(ocr_name)
+        if engine is None:
+            raise RuntimeError("no OCR engine available")
+        name, fn = engine
+        with Image.open(path) as img:
+            img.load()
+            res.pages.append(Page(None, fn(img).strip(), f"ocr:{name}"))
+        res.ocr_engine = name
+    # Always add metadata, so images with no readable text are still findable by more than name.
     with Image.open(path) as img:
-        img.load()
-        res.pages.append(Page(None, fn(img).strip(), f"ocr:{name}"))
-    res.ocr_engine = name
+        res.pages.append(Page(None, _image_meta(img, res), "meta"))
 
 
 def _docx(path: Path, res: Result) -> None:

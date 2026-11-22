@@ -17,6 +17,8 @@ export interface ExtractResult {
   error: string | null;
   ms: number;
   ocr_engine: string | null;
+  /** Unix ms of a date stored inside the file (image EXIF), if any. */
+  content_date?: number | null;
 }
 
 interface Pending {

@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 import type { DB } from "../db/index.ts";
 import type { Embedder } from "../embed/index.ts";
 
@@ -127,7 +127,7 @@ export async function search(db: DB, embedder: Embedder | null, q: string, opts:
     }
   }
 
-  // Filename list: share of query terms found in the file name. Covers files with no text.
+  // Filename list: share of query terms found in the file or folder name. Covers files with no text.
   const qt = terms(q).filter((t) => t.length > 1);
   if (qt.length) {
     const files = db
@@ -135,7 +135,8 @@ export async function search(db: DB, embedder: Embedder | null, q: string, opts:
       .all() as { id: number; path: string; content_hash: string | null }[];
     const scored = files
       .map((f) => {
-        const name = basename(f.path).toLowerCase();
+        // File name plus its folder's name, so "screenshot of ..." also matches files in Screenshots.
+        const name = `${basename(dirname(f.path))}/${basename(f.path)}`.toLowerCase();
         const matched = qt.filter((t) => name.includes(t)).length;
         return { f, matched, frac: matched / qt.length };
       })
