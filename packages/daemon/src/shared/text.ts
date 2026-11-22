@@ -7,7 +7,8 @@ export const STOPWORDS: ReadonlySet<string> = new Set(
     "a an and are as at be been but by can could did do does for from had has have he her his how i if in into is it " +
     "its me my mine myself of on or our out she so some that the their them then there these they this those to " +
     "up us was we were what when where which who whom why will with would you your yours " +
-    "got get made make find show give need want im ive id thing things stuff like about"
+    "got get made make find show give need want im ive id thing things stuff like about " +
+    "probably maybe perhaps little bit around roughly approximately sometime ago"
   ).split(" "),
 );
 

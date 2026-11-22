@@ -6,13 +6,13 @@ import { matchesPart, nameParts, queryTerms, stem } from "../src/shared/text.ts"
 
 type DB = ReturnType<typeof openDb>;
 
-function seed(db: DB, path: string, text: string) {
+function seed(db: DB, path: string, text: string, mtime = 0) {
   const hash = `h:${path}`;
   db.prepare("INSERT INTO contents(hash, text, extractor, extracted_at) VALUES (?, ?, 'test', 0)").run(hash, text);
   db.prepare("INSERT INTO chunks(content_hash, seq, pos, text) VALUES (?, 0, 0, ?)").run(hash, text);
   db.prepare(
-    "INSERT INTO files(path, content_hash, size, mtime, ext, kind, state, first_seen) VALUES (?, ?, 1, 0, '.pdf', 'document', 'indexed', 0)",
-  ).run(path, hash);
+    "INSERT INTO files(path, content_hash, size, mtime, ext, kind, state, first_seen) VALUES (?, ?, 1, ?, '.pdf', 'document', 'indexed', 0)",
+  ).run(path, hash, mtime);
 }
 
 describe("query and name text", () => {
@@ -86,5 +86,42 @@ describe("search ranking", () => {
     const db = build();
     const top3 = (await search(db, null, "the resume i made for acme", { limit: 3 })).map((h) => h.paths[0]);
     expect(top3.every((p) => p!.includes("Resume"))).toBe(true);
+  });
+});
+
+describe("query plan in ranking", () => {
+  const t = (iso: string) => new Date(iso).getTime();
+  const now = new Date("2026-11-12T12:00:00");
+  function build() {
+    const db = openDb(":memory:");
+    seed(db, "/d/Jane_Resume.pdf", "Jane Doe. Experience and education.", t("2026-03-05"));
+    seed(db, "/d/Jane_Resume_bank.pdf", "Jane Doe. Experience, education, banking.", t("2026-03-22"));
+    seed(db, "/d/Jane_Resume_final.pdf", "Jane Doe. Experience, education, projects.", t("2026-05-12"));
+    seed(db, "/d/Jane_Resume_2025.pdf", "Jane Doe. Education.", t("2025-04-11"));
+    for (let i = 0; i < 8; i++) seed(db, `/d/report-${i}.pdf`, `Quarterly report ${i} with experience notes.`, t("2026-05-20"));
+    return db;
+  }
+
+  it("ties equal name matches instead of ranking by path length", async () => {
+    const hits = await search(build(), null, "resume", { now });
+    const ranks = hits.filter((h) => h.paths[0]!.includes("Resume")).map((h) => h.trace.filename?.rank);
+    expect(new Set(ranks)).toEqual(new Set([1]));
+  });
+
+  it("puts the newest matching file first for 'latest'", async () => {
+    const hits = await search(build(), null, "my most up to date resume", { now });
+    expect(hits[0]!.paths[0]).toBe("/d/Jane_Resume_final.pdf");
+    expect(hits[0]!.trace.plan?.recency).toBeGreaterThan(0);
+  });
+
+  it("puts the oldest first for 'original'", async () => {
+    const hits = await search(build(), null, "the original resume", { now });
+    expect(hits[0]!.paths[0]).toBe("/d/Jane_Resume_2025.pdf");
+  });
+
+  it("prefers dates inside the window, then just before it with 'or a little earlier'", async () => {
+    const hits = await search(build(), null, "resume from april 2026 or a little earlier", { now });
+    expect(hits[0]!.paths[0]).toBe("/d/Jane_Resume_bank.pdf"); // 10 days before April
+    expect(hits[0]!.trace.plan?.time).toBeGreaterThan(0);
   });
 });
