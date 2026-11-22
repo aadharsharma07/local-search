@@ -37,12 +37,41 @@ needed. Sprint 2 builds a background queue that runs at low priority and pauses 
 busy (games, video).
 
 ### 6. Models load once at daemon start and stay loaded
-Loading the reranker takes a long time, while the embedder and reranker together use a small share
-of the GPU's memory. The daemon loads both at start so no search ever waits on a load.
+Loading a model takes a long time, while the models use a small share of the GPU's memory. The
+daemon (`lsd serve`) loads the embedder at start and keeps it loaded, so no search waits on a load;
+the reranker and expander load at start too, but only when switched on (see 8).
 
-### Still open (waiting on S3, S6 and the bench)
-- Embedding model: S3 compares embeddinggemma, Qwen3-Embedding and nomic.
-- Reranking: reranking 10 snippets was over its budget (S2); the bench shows whether it is worth a
-  smaller setting (fewer or shorter snippets, or only on weak results) or should be skipped.
-- Query expansion: too slow for every query (S7); the bench shows how often results are weak.
-- Baseline: qmd (S6) and our own bench on the private test set.
+### 7. Keep embeddinggemma
+On its own, Qwen3-Embedding found more of the test set's files than embeddinggemma, but only as
+many as plain keyword search, and it embeds several times slower. In the hybrid search the misses
+were not caused by the embedder, so the fast model stays. Revisit if a larger test set shows
+misses only the vector list could fix.
+
+### 8. Reranking and query expansion exist but are off
+Reranking cost about twice its budget and expansion far more; in the bench every found file was
+already first, and no miss was a wording problem. Both are built behind config switches
+(`rerank`, `expand` in `~/.local-search/config.yaml`), load their models only when switched on,
+and can be benched later without new code. Expansion runs only when the first results are weak.
+
+### 9. Everything integration is dropped
+The index is small enough that our own filename matching answers instantly, and Everything is a
+separate app to install and keep running.
+
+## Sprint 2 (from the Visit 1 bench)
+
+The bench misses were foundation problems, not model problems:
+- **Filler words** ("the", "my", "made") diluted matching. Query words are now weighted by how
+  rare they are in the index, file names are split into parts and plurals match. No LLM: it would
+  cost about a second per query for a job a small program does.
+- **Dates were ignored.** A query planner reads time windows (dates, seasons, bare years, "or a
+  little earlier"), recency ("latest", "original"), file type, screenshots and download origin,
+  and adjusts the fused ranking. Nothing is filtered out; `lsd search --explain` shows each boost.
+- **Ties in name matches** were broken by path length; equal matches now share a rank.
+- **Extractor upgrades** now re-extract old text.
+
+Result on the private test set: every in-scope search found in the top five (from half), at a
+few tens of milliseconds per query. The rules were diagnosed on that same small set, so the
+number is optimistic until more searches are added.
+
+Sprint 2 also added `lsd serve` (models resident, localhost API with a token, background indexing
+at low priority that pauses while the GPU is busy) and the daemon config file.

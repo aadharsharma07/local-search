@@ -31,15 +31,16 @@ or chunk settings change. Schema: `packages/daemon/src/db/migrations.ts`.
 
 ## Query path
 
-Decisions so far are in [DECISIONS.md](DECISIONS.md); reranking and expansion settings are still
-open until the Visit 1 bench.
+Decisions and their reasons are in [DECISIONS.md](DECISIONS.md).
 
-Query embedding, a BM25 probe and facets run first. Facets (time, origin, type, topic) come from
-model-free rules plus the query vector; Laya is not used. Retrievers (filename and folder name,
-keyword, vector, facet scores) are fused with RRF, the original query at 2x weight. The top
-results are reranked as short snippets (how many is still open), followed by a position-aware
-blend and a confidence threshold. Every model costs about 2 × parameters × tokens, so LLM query
-expansion stays off the per-query path and may run only when the first results are weak.
+1. **Plan** (`packages/daemon/src/planner`): match terms (stemmed, filler removed, weighted by
+   rarity in the index), a time window, recency, file type, screenshot and origin. Model-free.
+2. **Retrieve**: keyword (FTS5/BM25), vector (embeddinggemma, the only resident model) and
+   file/folder name lists, fused with RRF.
+3. **Adjust** by the plan: time fit from the content date or modified time, newest/oldest first
+   among close matches, small type/screenshot/origin boosts. Nothing is filtered.
+4. **Optional, off by default**: query expansion when the first results are weak (fused with the
+   original at 2x weight) and reranking of the top five.
 
 ## Schedule
 
@@ -49,7 +50,7 @@ Development follows the visits, because only the PC can answer the open question
 |---|---|
 | Before Visit 1 (done) | Schema, worker, field kit (S1–S7, S4b), `lsd index / search / bench`, CI dry run |
 | Visit 1 | Field kit, private test set, one-folder index + bench. Decide: embedder, OCR engine, facet routing, expansion, rerank size |
-| Sprint 2 | Planner and facets as decided (rules + query vector); Everything integration; background index queue; models resident; daemon API |
+| Sprint 2 (done) | Query planner (dates, recency, type, origin); rarity-weighted terms; re-extract on upgrades; `lsd serve` with background index queue, resident embedder and localhost API; rerank/expansion switches (off). Everything integration dropped |
 | Visit 2 | Full index; bench vs qmd; tune |
 | Sprint 3 | Tauri popup (built on the Mac against a model-free dev index); feedback; category tree and receipt fields (generated on the PC) |
 | Visits 3–4 | Daily use and tuning |

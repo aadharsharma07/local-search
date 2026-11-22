@@ -3,10 +3,10 @@
 A private, on-device replacement for Windows Search: ask in plain words, get the file back in under
 a second. Nothing leaves the PC. Personal project; see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status: Visit 1 in progress.** Built so far: index schema, extraction worker, field kit, and a
-command-line ingest, hybrid search and bench (`pnpm lsd index | search | bench`). The first Visit 1
-decisions are in [docs/DECISIONS.md](docs/DECISIONS.md); the embedder, reranking and expansion
-settings wait for the remaining spikes. Schedule: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Status: Sprint 2 done.** Built: index schema, extraction worker, field kit, query planner and
+hybrid search, and `lsd serve` (localhost API, background indexing). Commands:
+`pnpm lsd index | search | bench | serve`. Decisions: [docs/DECISIONS.md](docs/DECISIONS.md);
+schedule: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Next: Sprint 3 (search popup).
 
 ## Layout
 
