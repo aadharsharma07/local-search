@@ -1,6 +1,7 @@
 import { basename, dirname } from "node:path";
 import type { DB } from "../db/index.ts";
 import type { Embedder } from "../embed/index.ts";
+import { matchesPart, nameParts, queryTerms } from "../shared/text.ts";
 
 export const RRF_K = 60;
 
@@ -26,19 +27,40 @@ export interface SearchHit {
   trace: Trace;
 }
 
-const terms = (q: string) => [...new Set(q.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])];
+/** FTS5 query: terms OR-ed, prefix-matched when 3+ characters, so partial matches still rank. */
+export function ftsQuery(terms: string[]): string | null {
+  const t = terms.map((x) => x.replace(/"/g, "")).filter(Boolean);
+  return t.length ? t.map((x) => (x.length >= 3 ? `"${x}"*` : `"${x}"`)).join(" OR ") : null;
+}
 
-/** FTS5 query: every term as a prefix match, OR-ed, so partial matches still rank. */
-export function ftsQuery(q: string): string | null {
-  const t = terms(q);
-  return t.length ? t.map((x) => `"${x.replace(/"/g, "")}"*`).join(" OR ") : null;
+/**
+ * How distinctive each query term is in this index: inverse document frequency over indexed
+ * contents. Words found almost everywhere weigh ~0, rare ones carry the match. Equal weights when
+ * the index is empty.
+ */
+export function termWeights(db: DB, terms: string[]): Map<string, number> {
+  const n = (db.prepare("SELECT count(*) AS n FROM contents").get() as { n: number }).n;
+  const weights = new Map<string, number>();
+  const df = db.prepare(
+    "SELECT count(DISTINCT c.content_hash) AS df FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ?",
+  );
+  for (const t of terms) {
+    if (!n) {
+      weights.set(t, 1);
+      continue;
+    }
+    const q = ftsQuery([t]);
+    const d = q ? (df.get(q) as { df: number }).df : 0;
+    weights.set(t, Math.max(0, Math.log((n + 1) / (d + 0.5))));
+  }
+  return weights;
 }
 
 /** A window of the chunk around the first query term, for display. */
 export function snippetFor(text: string, q: string, width = 220): string {
   const lower = text.toLowerCase();
   let at = -1;
-  for (const t of terms(q)) {
+  for (const t of queryTerms(q)) {
     const i = lower.indexOf(t);
     if (i >= 0 && (at < 0 || i < at)) at = i;
   }
@@ -79,8 +101,16 @@ export async function search(db: DB, embedder: Embedder | null, q: string, opts:
   };
   const liveContent = db.prepare("SELECT 1 FROM files WHERE content_hash = ? AND deleted_at IS NULL LIMIT 1");
 
-  // Keyword list: rank chunks, keep each content's best chunk.
-  const fq = ftsQuery(q);
+  // Query terms and how distinctive each is in this index.
+  const qterms = queryTerms(q);
+  const weights = termWeights(db, qterms);
+  const maxW = Math.max(0, ...weights.values());
+  const totalW = [...weights.values()].reduce((a, b) => a + b, 0);
+
+  // Keyword list: rank chunks, keep each content's best chunk. Terms found almost everywhere are
+  // left out of the FTS query (they only add noise), unless that would leave nothing.
+  const strong = qterms.filter((t) => maxW === 0 || weights.get(t)! >= 0.3 * maxW);
+  const fq = ftsQuery(strong.length ? strong : qterms);
   if (fq) {
     const rows = db
       .prepare(
@@ -127,21 +157,23 @@ export async function search(db: DB, embedder: Embedder | null, q: string, opts:
     }
   }
 
-  // Filename list: share of query terms found in the file or folder name. Covers files with no text.
-  const qt = terms(q).filter((t) => t.length > 1);
-  if (qt.length) {
+  // Filename list: weighted share of query terms found in the file or folder name (split into
+  // parts, stemmed). Rare terms count more than common ones. Covers files with no text.
+  if (qterms.length) {
     const files = db
       .prepare("SELECT id, path, content_hash FROM files WHERE deleted_at IS NULL AND state != 'skipped'")
       .all() as { id: number; path: string; content_hash: string | null }[];
+    const w = (t: string) => (totalW > 0 ? weights.get(t)! : 1);
+    const denom = totalW > 0 ? totalW : qterms.length;
     const scored = files
       .map((f) => {
         // File name plus its folder's name, so "screenshot of ..." also matches files in Screenshots.
-        const name = `${basename(dirname(f.path))}/${basename(f.path)}`.toLowerCase();
-        const matched = qt.filter((t) => name.includes(t)).length;
-        return { f, matched, frac: matched / qt.length };
+        const parts = nameParts(`${basename(dirname(f.path))} ${basename(f.path)}`);
+        const hit = qterms.filter((t) => matchesPart(t, parts));
+        return { f, matched: hit.length, cover: hit.reduce((a, t) => a + w(t), 0) / denom };
       })
-      .filter((x) => x.frac >= 0.5 || (qt.length === 1 && x.matched === 1))
-      .sort((a, b) => b.frac - a.frac || a.f.path.length - b.f.path.length)
+      .filter((x) => x.matched > 0 && x.cover >= 0.5)
+      .sort((a, b) => b.cover - a.cover || a.f.path.length - b.f.path.length)
       .slice(0, depth);
     const seen = new Set<string>();
     let rank = 0;
