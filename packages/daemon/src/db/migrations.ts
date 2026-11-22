@@ -89,7 +89,7 @@ export const MIGRATIONS: readonly string[] = [
     facet       TEXT NOT NULL CHECK (facet IN ('type', 'time', 'origin', 'content')),
     parent_id   INTEGER REFERENCES facet_values(id) ON DELETE CASCADE,
     label       TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',    -- what Laya reads when choosing
+    description TEXT NOT NULL DEFAULT '',    -- what the facet means (used to embed categories)
     UNIQUE (facet, parent_id, label)
   ) STRICT;
 

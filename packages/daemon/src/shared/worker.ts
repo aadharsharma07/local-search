@@ -17,6 +17,8 @@ export interface ExtractResult {
   error: string | null;
   ms: number;
   ocr_engine: string | null;
+  /** Extractor version that produced this result. */
+  extractor?: string;
   /** Unix ms of a date stored inside the file (image EXIF), if any. */
   content_date?: number | null;
 }
@@ -96,7 +98,7 @@ export class WorkerClient {
   }
 
   ping() {
-    return this.request<{ version: string; python: string; platform: string }>({ op: "ping" }, 30_000);
+    return this.request<{ version: string; extractor: string; python: string; platform: string }>({ op: "ping" }, 30_000);
   }
   engines() {
     return this.request<{ ocr: string[] }>({ op: "engines" }, 120_000);

@@ -166,6 +166,22 @@ export async function embedMissing(db: DB, embedder: Embedder, onProgress?: (don
   return n;
 }
 
+/** How contents.extractor records the extractor version, e.g. "lsworker/0.2.0". */
+export const extractorTag = (version: string) => `lsworker/${version}`;
+
+/**
+ * Queue indexed files whose text came from a different extractor version, so they are
+ * re-extracted. Returns how many were queued.
+ */
+export function requeueOutdated(db: DB, currentTag: string): number {
+  return db
+    .prepare(
+      `UPDATE files SET state = 'stale' WHERE state = 'indexed' AND deleted_at IS NULL AND content_hash IN
+         (SELECT hash FROM contents WHERE extractor NOT LIKE ? || '%')`,
+    )
+    .run(currentTag).changes;
+}
+
 export interface ProcessOptions {
   worker: WorkerClient;
   embedder: Embedder;
@@ -191,15 +207,24 @@ export async function processQueue(db: DB, opts: ProcessOptions): Promise<Proces
   if (ensureVectorTable(db, opts.embedder.spec) === "stale") {
     res.reembedded = await embedMissing(db, opts.embedder);
   }
+  // Text from an older extractor (e.g. before image metadata existed) is re-extracted.
+  const current = extractorTag((await opts.worker.ping()).extractor);
+  requeueOutdated(db, current);
   const next = db.prepare(
     "SELECT id, path, content_hash FROM files WHERE state IN ('queued', 'stale') AND deleted_at IS NULL ORDER BY id LIMIT ?",
   );
   const setState = db.prepare("UPDATE files SET state = ?, error = ? WHERE id = ?");
-  const hasContent = db.prepare("SELECT 1 FROM contents WHERE hash = ?");
+  const contentExtractor = db.prepare("SELECT extractor FROM contents WHERE hash = ?");
   const link = db.prepare("UPDATE files SET content_hash = ?, origin_url = ?, state = 'indexed', error = NULL WHERE id = ?");
+  // Upsert: re-extraction replaces the text of a hash that files already point at.
   const putContent = db.prepare(
-    "INSERT INTO contents(hash, text, extractor, content_date, extracted_at) VALUES (?, ?, ?, ?, ?)",
+    `INSERT INTO contents(hash, text, extractor, content_date, extracted_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(hash) DO UPDATE SET text = excluded.text, extractor = excluded.extractor,
+       content_date = excluded.content_date, extracted_at = excluded.extracted_at`,
   );
+  const oldChunks = db.prepare("SELECT id FROM chunks WHERE content_hash = ?");
+  const dropVec = db.prepare("DELETE FROM chunk_vecs WHERE chunk_id = ?");
+  const dropChunks = db.prepare("DELETE FROM chunks WHERE content_hash = ?");
   const putChunk = db.prepare("INSERT INTO chunks(content_hash, seq, pos, page, text) VALUES (?, ?, ?, ?, ?)");
   const putVec = db.prepare("INSERT INTO chunk_vecs(chunk_id, embedding) VALUES (?, ?)");
   const batch = opts.batch ?? 50;
@@ -232,7 +257,8 @@ export async function processQueue(db: DB, opts: ProcessOptions): Promise<Proces
       const origin = readOrigin(f.path);
       const originUrl = origin?.hostUrl ?? origin?.referrerUrl ?? null;
 
-      if (hasContent.get(hash)) {
+      const existing = contentExtractor.get(hash) as { extractor: string } | undefined;
+      if (existing && existing.extractor.startsWith(current)) {
         db.transaction(() => {
           link.run(hash, originUrl, f.id);
           if (old && old !== hash) gcContent(db, old);
@@ -264,7 +290,11 @@ export async function processQueue(db: DB, opts: ProcessOptions): Promise<Proces
         continue;
       }
       db.transaction(() => {
-        putContent.run(hash, r.text, `lsworker ${r.ocr_engine ? `+ocr:${r.ocr_engine}` : ""}`.trim(), r.content_date ?? null, Date.now());
+        if (existing) {
+          for (const { id } of oldChunks.all(hash) as { id: number }[]) dropVec.run(BigInt(id));
+          dropChunks.run(hash);
+        }
+        putContent.run(hash, r.text, `${current}${r.ocr_engine ? ` +ocr:${r.ocr_engine}` : ""}`, r.content_date ?? null, Date.now());
         pieces.forEach((p, seq) => {
           const { lastInsertRowid } = putChunk.run(hash, seq, p.pos, p.page, p.text);
           putVec.run(BigInt(lastInsertRowid), vectors[seq]!);

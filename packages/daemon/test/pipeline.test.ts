@@ -93,6 +93,22 @@ run("ingest + search pipeline", () => {
     expect(r.indexed + r.linked + r.failed).toBe(0);
   });
 
+  it("re-extracts text made by an older extractor version", async () => {
+    const lease = db.prepare("SELECT content_hash AS h FROM files WHERE path LIKE '%lease.pdf'").get() as { h: string };
+    const before = db.prepare("SELECT count(*) AS n FROM chunks WHERE content_hash = ?").get(lease.h) as { n: number };
+    db.prepare("UPDATE contents SET extractor = 'lsworker/0.0.1' WHERE hash = ?").run(lease.h);
+    await process();
+    const row = db.prepare("SELECT extractor FROM contents WHERE hash = ?").get(lease.h) as { extractor: string };
+    expect(row.extractor).not.toContain("0.0.1");
+    const after = db.prepare("SELECT count(*) AS n FROM chunks WHERE content_hash = ?").get(lease.h) as { n: number };
+    expect(after.n).toBe(before.n); // replaced, not duplicated
+    const vecs = db
+      .prepare("SELECT count(*) AS n FROM chunks c WHERE NOT EXISTS (SELECT 1 FROM chunk_vecs v WHERE v.chunk_id = c.id)")
+      .get() as { n: number };
+    expect(vecs.n).toBe(0);
+    expect((await top("security deposit pets"))[0]).toMatch(/lease\.pdf$/);
+  });
+
   it("re-indexes a changed file and drops its old content", async () => {
     const f = join(root, "Documents", "Notes", "banana bread.txt");
     writeFileSync(f, "Zucchini muffins: 2 cups grated zucchini, 1 cup sugar.\n");

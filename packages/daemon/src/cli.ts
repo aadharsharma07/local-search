@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { bench, writeBench } from "./bench.ts";
-import { DATA_DIR, DEFAULT_EXCLUDES, defaultPython, defaultRoots, REPO_ROOT } from "./config.ts";
+import { CONFIG_PATH, DATA_DIR, defaultPython, loadDaemonConfig, REPO_ROOT } from "./config.ts";
 import { loadTestSet } from "./shared/testset.ts";
 import { openDb } from "./db/index.ts";
 import { EMBEDDINGGEMMA, HashEmbedder, LlamaEmbedder, type Embedder } from "./embed/index.ts";
@@ -14,7 +14,8 @@ import { WorkerClient } from "./shared/worker.ts";
 const HELP = `lsd — local-search daemon (Sprint 1: command line only)
 
 Usage:
-  lsd index [--roots a,b] [--embedder gemma|hash]   Scan folders and index new or changed files
+  lsd index [--roots a,b] [--exclude x,y] [--embedder gemma|hash]
+                                                     Scan folders and index new or changed files
   lsd search "<query>" [-n 10] [--explain]          Hybrid keyword + vector + filename search
   lsd status                                         File counts by state
   lsd bench [--testset <file>] [--out <dir>]         Score the index against the test set
@@ -23,6 +24,9 @@ Options:
   --db <file>        Index file (default: ~/.local-search/index.sqlite)
   --embedder <name>  gemma (default; runs a model, use on the PC) or hash (no model, keyword-level)
   --ocr <engine>     auto (default), windows, rapidocr, tesseract, or none (skip OCR entirely)
+  --exclude <names>  Extra folder names to skip anywhere, added to the built-in list
+
+Settings (roots, excludeDirs, rerank, expand, port) are read from ${CONFIG_PATH}.
 `;
 
 async function makeEmbedder(name: string): Promise<Embedder> {
@@ -37,6 +41,7 @@ async function main() {
     options: {
       db: { type: "string" },
       roots: { type: "string" },
+      exclude: { type: "string" },
       embedder: { type: "string", default: "gemma" },
       n: { type: "string", short: "n", default: "10" },
       explain: { type: "boolean", default: false },
@@ -58,7 +63,8 @@ async function main() {
   }
 
   if (cmd === "index") {
-    const roots = values.roots ? values.roots.split(",") : defaultRoots();
+    const cfg = loadDaemonConfig();
+    const roots = values.roots ? values.roots.split(",") : cfg.roots;
     const worker = new WorkerClient(defaultPython(), 60_000);
     const cloudCheck =
       process.platform === "win32"
@@ -71,7 +77,8 @@ async function main() {
             return hits;
           }
         : undefined;
-    const s = await scan(db, { roots, excludeDirs: DEFAULT_EXCLUDES, cloudCheck });
+    const extra = values.exclude ? values.exclude.split(",").map((d) => d.trim()).filter(Boolean) : [];
+    const s = await scan(db, { roots, excludeDirs: [...cfg.excludeDirs, ...extra], cloudCheck });
     console.error(`scan: ${s.seen} files · ${s.added} new · ${s.changed} changed · ${s.restored} restored · ${s.tombstoned} removed · ${s.skipped} skipped`);
     if (s.missingRoots.length) console.error(`missing folders (left untouched): ${s.missingRoots.join(", ")}`);
     const embedder = await makeEmbedder(values.embedder!);

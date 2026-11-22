@@ -16,7 +16,7 @@ import os
 import sys
 
 from . import __version__, ocr
-from .extract import extract
+from .extract import EXTRACTOR_VERSION, extract
 
 
 # Windows file attributes that mark OneDrive / cloud placeholders. Reading the contents of such a
@@ -44,7 +44,12 @@ def cloud_attrs(paths: list[str]) -> dict:
 def handle(req: dict) -> dict:
     op = req.get("op")
     if op == "ping":
-        return {"version": __version__, "python": sys.version.split()[0], "platform": sys.platform}
+        return {
+            "version": __version__,
+            "extractor": EXTRACTOR_VERSION,
+            "python": sys.version.split()[0],
+            "platform": sys.platform,
+        }
     if op == "engines":
         return {"ocr": ocr.available_engines()}
     if op == "cloudattrs":
