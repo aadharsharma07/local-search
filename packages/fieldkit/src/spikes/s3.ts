@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { basename, normalize } from "node:path";
 import { chunkText } from "@local-search/daemon/shared/chunk";
+import { fitToContext } from "@local-search/daemon/embed";
 import type { FieldkitConfig } from "../config.ts";
 import { indexable, sample, type Corpus } from "../corpus.ts";
 import { cosine, EMBEDDERS, loadModel, type EmbeddingCandidate } from "../models.ts";
@@ -82,7 +83,7 @@ async function vectorRankings(cfg: FieldkitConfig, m: EmbeddingCandidate, docs: 
   for (const [i, d] of docs.entries()) {
     const pieces = d.chunks.length ? d.chunks : [""];
     for (const ch of pieces) {
-      const input = m.doc(d.title, ch).slice(0, 6000);
+      const input = fitToContext(model, m.doc(d.title, ch), 2048);
       vecs.push({ doc: i, v: (await ctx.getEmbeddingFor(input)).vector });
       n++;
     }

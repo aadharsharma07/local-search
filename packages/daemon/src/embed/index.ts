@@ -70,6 +70,21 @@ export const EMBEDDINGGEMMA: Omit<LlamaEmbedderOptions, "modelsDir"> = {
   docFormat: "title: {title} | text: {text}",
 };
 
+/**
+ * Embedding input that fits the context: chunks are cut by characters, and text that tokenizes
+ * densely (OCR noise, non-Latin scripts, tables of numbers) can exceed the context, which makes
+ * node-llama-cpp throw. Keeps the first tokens; a few are left free for special tokens.
+ */
+export function fitToContext(
+  model: import("node-llama-cpp").LlamaModel,
+  text: string,
+  contextSize: number,
+): import("node-llama-cpp").Token[] {
+  const tokens = model.tokenize(text);
+  const max = contextSize - 8;
+  return tokens.length > max ? tokens.slice(0, max) : tokens;
+}
+
 /** GGUF embedding model through node-llama-cpp (Vulkan on the PC). Loaded lazily. */
 export class LlamaEmbedder implements Embedder {
   private constructor(
@@ -101,10 +116,14 @@ export class LlamaEmbedder implements Embedder {
 
   async embedDocument(title: string, text: string) {
     const input = this.opts.docFormat.replace("{title}", title || "none").replace("{text}", text);
-    return normalize((await this.ctx.getEmbeddingFor(input)).vector);
+    return normalize((await this.ctx.getEmbeddingFor(fitToContext(this.model, input, this.contextSize))).vector);
   }
   async embedQuery(query: string) {
-    return normalize((await this.ctx.getEmbeddingFor(this.opts.queryFormat.replace("{q}", query))).vector);
+    const input = this.opts.queryFormat.replace("{q}", query);
+    return normalize((await this.ctx.getEmbeddingFor(fitToContext(this.model, input, this.contextSize))).vector);
+  }
+  private get contextSize() {
+    return this.opts.contextSize ?? 2048;
   }
   async close() {
     await this.ctx.dispose();
