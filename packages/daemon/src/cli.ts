@@ -3,12 +3,14 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { bench, writeBench } from "./bench.ts";
-import { CONFIG_PATH, DATA_DIR, defaultPython, loadDaemonConfig, REPO_ROOT } from "./config.ts";
+import { CONFIG_PATH, DATA_DIR, defaultPython, loadDaemonConfig, REPO_ROOT, type DaemonConfig } from "./config.ts";
+import { loadExpander, loadReranker } from "./embed/extras.ts";
+import { Indexer, startServer, writeToken } from "./serve.ts";
 import { loadTestSet } from "./shared/testset.ts";
 import { openDb } from "./db/index.ts";
 import { EMBEDDINGGEMMA, HashEmbedder, LlamaEmbedder, type Embedder } from "./embed/index.ts";
 import { processQueue, scan, stateCounts } from "./ingest/index.ts";
-import { search } from "./search/index.ts";
+import { search, type SearchOptions } from "./search/index.ts";
 import { WorkerClient } from "./shared/worker.ts";
 
 const HELP = `lsd — local-search daemon (Sprint 1: command line only)
@@ -18,6 +20,7 @@ Usage:
                                                      Scan folders and index new or changed files
   lsd search "<query>" [-n 10] [--explain]          Hybrid keyword + vector + filename search
   lsd status                                         File counts by state
+  lsd serve                                          Long-running: localhost API + background indexing
   lsd bench [--testset <file>] [--out <dir>]         Score the index against the test set
 
 Options:
@@ -28,6 +31,15 @@ Options:
 
 Settings (roots, excludeDirs, rerank, expand, port) are read from ${CONFIG_PATH}.
 `;
+
+/** Reranker and expander, loaded only when switched on in the config. */
+async function loadExtras(cfg: DaemonConfig): Promise<Pick<SearchOptions, "rerank" | "expand">> {
+  const dir = join(DATA_DIR, "models");
+  return {
+    ...(cfg.rerank ? { rerank: await loadReranker(dir) } : {}),
+    ...(cfg.expand ? { expand: await loadExpander(dir) } : {}),
+  };
+}
 
 async function makeEmbedder(name: string): Promise<Embedder> {
   if (name === "hash") return new HashEmbedder();
@@ -66,17 +78,7 @@ async function main() {
     const cfg = loadDaemonConfig();
     const roots = values.roots ? values.roots.split(",") : cfg.roots;
     const worker = new WorkerClient(defaultPython(), 60_000);
-    const cloudCheck =
-      process.platform === "win32"
-        ? async (paths: string[]) => {
-            const hits = new Set<number>();
-            for (let i = 0; i < paths.length; i += 5000) {
-              const r = await worker.request<{ placeholders: number[] }>({ op: "cloudattrs", paths: paths.slice(i, i + 5000) }, 300_000);
-              for (const j of r.placeholders) hits.add(i + j);
-            }
-            return hits;
-          }
-        : undefined;
+    const cloudCheck = process.platform === "win32" ? (paths: string[]) => worker.cloudCheck(paths) : undefined;
     const extra = values.exclude ? values.exclude.split(",").map((d) => d.trim()).filter(Boolean) : [];
     const s = await scan(db, { roots, excludeDirs: [...cfg.excludeDirs, ...extra], cloudCheck });
     console.error(`scan: ${s.seen} files · ${s.added} new · ${s.changed} changed · ${s.restored} restored · ${s.tombstoned} removed · ${s.skipped} skipped`);
@@ -108,12 +110,37 @@ async function main() {
     return;
   }
 
+  if (cmd === "serve") {
+    const cfg = loadDaemonConfig();
+    const log = (m: string) => console.error(`[${new Date().toTimeString().slice(0, 8)}] ${m}`);
+    const worker = new WorkerClient(defaultPython(), 60_000);
+    log("loading models (kept loaded while serving)");
+    const embedder = await makeEmbedder(values.embedder!);
+    const searchOpts = await loadExtras(cfg);
+    const indexer = new Indexer({ db, worker, embedder, cfg, log });
+    const token = writeToken();
+    const { server, port } = await startServer({ db, embedder, token, port: cfg.port, indexer, searchOpts });
+    log(`listening on http://127.0.0.1:${port} · token in ${join(DATA_DIR, "token")} · rerank ${cfg.rerank ? "on" : "off"} · expand ${cfg.expand ? "on" : "off"}`);
+    indexer.start();
+    const shutdown = async () => {
+      indexer.stop();
+      server.close();
+      worker.close();
+      await embedder.close();
+      process.exit(0);
+    };
+    process.on("SIGINT", () => void shutdown());
+    process.on("SIGTERM", () => void shutdown());
+    return;
+  }
+
   if (cmd === "search") {
     const q = rest.join(" ");
     if (!q) throw new Error('Usage: lsd search "<query>"');
     const embedder = await makeEmbedder(values.embedder!);
+    const extras = await loadExtras(loadDaemonConfig());
     const t0 = performance.now();
-    const hits = await search(db, embedder, q, { limit: Number(values.n) });
+    const hits = await search(db, embedder, q, { limit: Number(values.n), ...extras });
     const ms = Math.round(performance.now() - t0);
     hits.forEach((h, i) => {
       const dup = h.paths.length > 1 ? ` (+${h.paths.length - 1} duplicate${h.paths.length > 2 ? "s" : ""})` : "";

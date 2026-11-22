@@ -14,6 +14,10 @@ export interface SearchOptions {
   now?: Date;
   /** Record the query and its plan in the queries table (for later tuning). */
   log?: boolean;
+  /** Cross-encoder scores for (query, snippets); reorders the top results when given. */
+  rerank?: (q: string, docs: string[]) => Promise<number[]>;
+  /** Alternative phrasings of a query; used only when the first results are weak. */
+  expand?: (q: string) => Promise<string[]>;
 }
 
 export interface Trace {
@@ -21,6 +25,10 @@ export interface Trace {
   vector?: { rank: number; distance: number };
   filename?: { rank: number; matched: number };
   bonus: number;
+  /** Cross-encoder score when reranking ran. */
+  rerank?: number;
+  /** Found (also) through an expanded phrasing of the query. */
+  expanded?: boolean;
   /** Score added by the query plan: time fit, recency, type, screenshot, origin. */
   plan?: Partial<Record<"time" | "recency" | "type" | "screenshot" | "origin", number>>;
 }
@@ -91,12 +99,11 @@ interface Group {
 }
 
 /**
- * Hybrid search: keyword (FTS5/BM25), vector (sqlite-vec) and filename lists, fused with
- * reciprocal rank fusion plus a small bonus for top ranks, grouped per content so duplicates
- * appear once. Facets, expansion and reranking plug in on top of this in Sprint 2.
+ * Fused, plan-adjusted candidates for one query, best first: keyword (FTS5/BM25), vector
+ * (sqlite-vec) and filename lists, fused with reciprocal rank fusion plus a small bonus for top
+ * ranks, grouped per content so duplicates appear once, then adjusted by the query plan.
  */
-export async function search(db: DB, embedder: Embedder | null, q: string, opts: SearchOptions = {}): Promise<SearchHit[]> {
-  const limit = opts.limit ?? 10;
+async function rankGroups(db: DB, embedder: Embedder | null, q: string, opts: SearchOptions): Promise<Group[]> {
   const depth = opts.depth ?? 100;
   const groups = new Map<string, Group>();
   const touch = (key: string, chunkId: number | null): Group => {
@@ -208,20 +215,65 @@ export async function search(db: DB, embedder: Embedder | null, q: string, opts:
   }
 
   applyPlan(db, qplan, [...groups.values()]);
+  return [...groups.values()].sort((a, b) => b.score - a.score);
+}
 
-  const top = [...groups.values()].sort((a, b) => b.score - a.score).slice(0, limit);
-  const pathsFor = db.prepare("SELECT path FROM files WHERE content_hash = ? AND deleted_at IS NULL ORDER BY length(path), path");
-  const pathById = db.prepare("SELECT path FROM files WHERE id = ?");
+/** Below this top score the first results count as weak (no list ranked anything first). */
+export const WEAK_SCORE = 0.06;
+/** How many top results the reranker reorders (S2: reranking costs grow with this). */
+export const RERANK_TOP = 5;
+
+/**
+ * Hybrid search: keyword, vector and filename lists fused with RRF, adjusted by the query plan.
+ * Optional, off by default (config switches): query expansion when the first results are weak,
+ * fused with the original query at 2x weight; reranking of the top results.
+ */
+export async function search(db: DB, embedder: Embedder | null, q: string, opts: SearchOptions = {}): Promise<SearchHit[]> {
+  const limit = opts.limit ?? 10;
+  let ranked = await rankGroups(db, embedder, q, opts);
+
+  if (opts.expand && (!ranked.length || ranked[0]!.score < WEAK_SCORE)) {
+    const merged = new Map(ranked.map((g) => [g.key, { ...g, score: 2 * g.score }]));
+    for (const v of (await opts.expand(q)).slice(0, 3)) {
+      const more = await rankGroups(db, embedder, v, { ...opts, log: false });
+      more.forEach((g, i) => {
+        const m = merged.get(g.key) ?? { ...g, score: 0, trace: { ...g.trace } };
+        m.score += 1 / (RRF_K + i + 1);
+        m.trace.expanded = true;
+        merged.set(g.key, m);
+      });
+    }
+    ranked = [...merged.values()].sort((a, b) => b.score - a.score);
+  }
+
   const chunk = db.prepare("SELECT text, page FROM chunks WHERE id = ?");
   const firstChunk = db.prepare("SELECT text, page FROM chunks WHERE content_hash = ? ORDER BY seq LIMIT 1");
+  const textOf = (g: Group) =>
+    (g.chunkId !== null ? chunk.get(g.chunkId) : g.key.startsWith("f:") ? undefined : firstChunk.get(g.key)) as
+      | { text: string; page: number | null }
+      | undefined;
 
-  return top.map((g) => {
+  if (opts.rerank && ranked.length > 1) {
+    const head = ranked.slice(0, RERANK_TOP);
+    const scores = await opts.rerank(q, head.map((g) => (textOf(g)?.text ?? "").slice(0, 1000)));
+    const top = head[0]!.score;
+    head
+      .map((g, i) => ({ g, s: scores[i] ?? 0 }))
+      .sort((a, b) => b.s - a.s)
+      .forEach(({ g, s }, i) => {
+        g.trace.rerank = Math.round(s * 1000) / 1000;
+        g.score = top + 0.001 * (head.length - i);
+      });
+    ranked = [...head, ...ranked.slice(RERANK_TOP)].sort((a, b) => b.score - a.score);
+  }
+
+  const pathsFor = db.prepare("SELECT path FROM files WHERE content_hash = ? AND deleted_at IS NULL ORDER BY length(path), path");
+  const pathById = db.prepare("SELECT path FROM files WHERE id = ?");
+  return ranked.slice(0, limit).map((g) => {
     const paths = g.key.startsWith("f:")
       ? [(pathById.get(Number(g.key.slice(2))) as { path: string }).path]
       : (pathsFor.all(g.key) as { path: string }[]).map((r) => r.path);
-    const c = (g.chunkId !== null ? chunk.get(g.chunkId) : g.key.startsWith("f:") ? undefined : firstChunk.get(g.key)) as
-      | { text: string; page: number | null }
-      | undefined;
+    const c = textOf(g);
     return {
       paths,
       score: Math.round(g.score * 10000) / 10000,

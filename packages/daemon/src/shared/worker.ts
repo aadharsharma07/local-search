@@ -100,6 +100,15 @@ export class WorkerClient {
   ping() {
     return this.request<{ version: string; extractor: string; python: string; platform: string }>({ op: "ping" }, 30_000);
   }
+  /** Indexes of paths that are cloud-only placeholders (Windows), in batches. */
+  async cloudCheck(paths: string[]): Promise<Set<number>> {
+    const hits = new Set<number>();
+    for (let i = 0; i < paths.length; i += 5000) {
+      const r = await this.request<{ placeholders: number[] }>({ op: "cloudattrs", paths: paths.slice(i, i + 5000) }, 300_000);
+      for (const j of r.placeholders) hits.add(i + j);
+    }
+    return hits;
+  }
   engines() {
     return this.request<{ ocr: string[] }>({ op: "engines" }, 120_000);
   }
