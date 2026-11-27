@@ -33,7 +33,7 @@ mkdir -p ~/.local-search
 printf 'roots:\n  - %s/fixtures/corpus\n' "$PWD" > ~/.local-search/config.yaml
 pnpm lsd serve --embedder hash
 
-# Terminal 2: the popup (window shows at start in dev and doesn't hide on blur)
+# Terminal 2: the popup (the window shows at start in dev)
 pnpm --filter @local-search/ui tauri dev
 ```
 

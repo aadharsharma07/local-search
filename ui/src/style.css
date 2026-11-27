@@ -27,10 +27,16 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; }
 main { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--line); }
+.top { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
 #q {
-  font: inherit; font-size: 20px; padding: 14px 18px; border: 0; border-bottom: 1px solid var(--line);
+  flex: 1; min-width: 0; font: inherit; font-size: 20px; padding: 14px 18px; border: 0;
   background: transparent; color: var(--fg); outline: none;
 }
+#close {
+  flex: none; width: 32px; height: 32px; margin-right: 10px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer;
+}
+#close:hover { background: var(--tile); color: var(--fg); }
 #q::-webkit-search-cancel-button { display: none; }
 #note { padding: 6px 18px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
 #note.error { color: var(--error); }

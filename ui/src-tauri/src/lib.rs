@@ -194,11 +194,10 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // A launcher popup: clicking elsewhere hides it. Not in dev, where devtools take focus.
+            // A launcher popup: clicking elsewhere hides it. The page does the hiding, so it can
+            // record the search first (and ignore the blur that opening a file causes).
             if let WindowEvent::Focused(false) = event {
-                if !cfg!(debug_assertions) {
-                    let _ = window.hide();
-                }
+                let _ = window.emit("popup://blur", ());
             }
         })
         .run(tauri::generate_context!())

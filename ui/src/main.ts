@@ -154,18 +154,26 @@ async function runSearch(q: string, mode: "typing" | "commit" | "deep") {
   }
 }
 
+/** True while a result is being opened: the other app taking focus must not end the session. */
+let opening = false;
+
 async function act(i: number, action: "open" | "open_folder") {
   const h = hits[i];
   const f = h?.files[0];
-  if (!h || !f || !session) return;
+  if (!h || !f || !session || opening) return;
   const q = input.value;
+  opening = true;
   try {
-    await invoke(action === "open" ? "open_file" : "reveal_file", { path: f.path });
-  } catch (e) {
-    return setNote(`Couldn't open: ${String(e)}`, true);
+    try {
+      await invoke(action === "open" ? "open_file" : "reveal_file", { path: f.path });
+    } catch (e) {
+      return setNote(`Couldn't open: ${String(e)}`, true);
+    }
+    await session.act(q, f, i + 1, action).catch((e) => console.warn("feedback", e));
+    await hide();
+  } finally {
+    opening = false;
   }
-  await session.act(q, f, i + 1, action).catch((e) => console.warn("feedback", e));
-  await hide();
 }
 
 async function hide() {
@@ -226,6 +234,10 @@ async function onShown() {
 }
 
 void listen("popup://shown", () => void onShown());
+void listen("popup://blur", () => {
+  if (!opening) void hide();
+});
+$<HTMLButtonElement>("close").onclick = () => void hide();
 // The window starts hidden; connect now so the first hotkey press is instant. In dev (tauri dev)
 // the window is shown at start, so treat that as a show.
 void (document.hasFocus() ? onShown() : connect());
