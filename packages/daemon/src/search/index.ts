@@ -1,8 +1,9 @@
 import { basename, dirname } from "node:path";
-import type { DB } from "../db/index.ts";
+import { embeddingFingerprint, type DB } from "../db/index.ts";
 import type { Embedder } from "../embed/index.ts";
 import { plan, timeFit, type QueryPlan } from "../planner/index.ts";
 import { matchesPart, nameParts, queryTerms } from "../shared/text.ts";
+import { logQuery, OPENED_WEIGHT, openedFor } from "./feedback.ts";
 
 export const RRF_K = 60;
 
@@ -12,12 +13,16 @@ export interface SearchOptions {
   depth?: number;
   /** "Now" for relative dates ("last summer"). */
   now?: Date;
-  /** Record the query and its plan in the queries table (for later tuning). */
+  /** Record the query, its plan and its vector in the queries table (feedback and tuning). */
   log?: boolean;
+  /** Rank files opened for similar past searches higher (default true; bench turns it off). */
+  useFeedback?: boolean;
   /** Cross-encoder scores for (query, snippets); reorders the top results when given. */
   rerank?: (q: string, docs: string[]) => Promise<number[]>;
   /** Alternative phrasings of a query; used only when the first results are weak. */
   expand?: (q: string) => Promise<string[]>;
+  /** Expand even when the first results are strong ("search harder"). */
+  forceExpand?: boolean;
 }
 
 export interface Trace {
@@ -31,6 +36,20 @@ export interface Trace {
   expanded?: boolean;
   /** Score added by the query plan: time fit, recency, type, screenshot, origin. */
   plan?: Partial<Record<"time" | "recency" | "type" | "screenshot" | "origin", number>>;
+  /** Opened before for this or a similar search. */
+  opened?: { rank: number; sim: number; opens: number };
+}
+
+/** One file holding a hit's content, with what the popup shows for it. */
+export interface HitFile {
+  id: number;
+  path: string;
+  name: string;
+  folder: string;
+  kind: string;
+  ext: string;
+  mtime: number;
+  size: number;
 }
 
 /** Plan boosts, on the same scale as RRF scores (a #1 rank in one list is ~0.066). */
@@ -43,6 +62,8 @@ const SCREENSHOT_TOOL = /software: [^.]*(snip|screen|capture|greenshot|sharex|li
 export interface SearchHit {
   /** Every live path holding this content (duplicates share one hit). First is the primary. */
   paths: string[];
+  /** The same files as paths, in the same order, with display facts and ids for feedback. */
+  files: HitFile[];
   score: number;
   snippet: string;
   page: number | null;
@@ -103,7 +124,12 @@ interface Group {
  * (sqlite-vec) and filename lists, fused with reciprocal rank fusion plus a small bonus for top
  * ranks, grouped per content so duplicates appear once, then adjusted by the query plan.
  */
-async function rankGroups(db: DB, embedder: Embedder | null, q: string, opts: SearchOptions): Promise<Group[]> {
+async function rankGroups(
+  db: DB,
+  embedder: Embedder | null,
+  q: string,
+  opts: SearchOptions,
+): Promise<{ groups: Group[]; queryId: number | null }> {
   const depth = opts.depth ?? 100;
   const groups = new Map<string, Group>();
   const touch = (key: string, chunkId: number | null): Group => {
@@ -114,7 +140,7 @@ async function rankGroups(db: DB, embedder: Embedder | null, q: string, opts: Se
   };
   const contribute = (g: Group, rank: number, weight = 1) => {
     g.score += weight / (RRF_K + rank + 1);
-    const bonus = rank === 0 ? 0.05 : rank <= 2 ? 0.02 : 0;
+    const bonus = (rank === 0 ? 0.05 : rank <= 2 ? 0.02 : 0) * weight;
     if (bonus > g.trace.bonus) {
       g.score += bonus - g.trace.bonus;
       g.trace.bonus = bonus;
@@ -124,7 +150,9 @@ async function rankGroups(db: DB, embedder: Embedder | null, q: string, opts: Se
 
   // What the query asks for, and how distinctive each of its words is in this index.
   const qplan = plan(q, opts.now);
-  if (opts.log) db.prepare("INSERT INTO queries(text, plan_json, ts) VALUES (?, ?, ?)").run(q, JSON.stringify(qplan), Date.now());
+  const qv = embedder ? await embedder.embedQuery(q) : null;
+  const fp = embedder ? embeddingFingerprint(embedder.spec) : null;
+  const queryId = opts.log ? logQuery(db, q, qplan, qv, fp) : null;
   const qterms = qplan.terms;
   const weights = termWeights(db, qterms);
   const maxW = Math.max(0, ...weights.values());
@@ -156,8 +184,7 @@ async function rankGroups(db: DB, embedder: Embedder | null, q: string, opts: Se
 
   // Vector list.
   const hasVec = db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'chunk_vecs'").get();
-  if (embedder && hasVec) {
-    const qv = await embedder.embedQuery(q);
+  if (qv && hasVec) {
     // KNN on the vec0 table alone (sqlite-vec needs the MATCH and k constraints on it directly),
     // then look up each chunk's content.
     const knn = db
@@ -214,8 +241,24 @@ async function rankGroups(db: DB, embedder: Embedder | null, q: string, opts: Se
     }
   }
 
+  // Opened list: files opened for this or a similar past search. A list of its own in the fusion
+  // (at reduced weight), so feedback reorders but never replaces what the other lists found.
+  if (opts.useFeedback !== false) {
+    const seen = new Set<string>();
+    let rank = 0;
+    for (const o of openedFor(db, q, qv, fp)) {
+      const key = o.hash ?? `f:${o.fileId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const g = touch(key, null);
+      g.trace.opened = { rank: rank + 1, sim: Math.round(o.sim * 1000) / 1000, opens: o.opens };
+      contribute(g, rank++, OPENED_WEIGHT);
+      if (rank >= depth) break;
+    }
+  }
+
   applyPlan(db, qplan, [...groups.values()]);
-  return [...groups.values()].sort((a, b) => b.score - a.score);
+  return { groups: [...groups.values()].sort((a, b) => b.score - a.score), queryId };
 }
 
 /** Below this top score the first results count as weak (no list ranked anything first). */
@@ -229,13 +272,24 @@ export const RERANK_TOP = 5;
  * fused with the original query at 2x weight; reranking of the top results.
  */
 export async function search(db: DB, embedder: Embedder | null, q: string, opts: SearchOptions = {}): Promise<SearchHit[]> {
-  const limit = opts.limit ?? 10;
-  let ranked = await rankGroups(db, embedder, q, opts);
+  return (await searchWithMeta(db, embedder, q, opts)).hits;
+}
 
-  if (opts.expand && (!ranked.length || ranked[0]!.score < WEAK_SCORE)) {
+/** search(), plus the id of the logged query (null unless opts.log) for feedback. */
+export async function searchWithMeta(
+  db: DB,
+  embedder: Embedder | null,
+  q: string,
+  opts: SearchOptions = {},
+): Promise<{ hits: SearchHit[]; queryId: number | null }> {
+  const limit = opts.limit ?? 10;
+  const first = await rankGroups(db, embedder, q, opts);
+  let ranked = first.groups;
+
+  if (opts.expand && (opts.forceExpand || !ranked.length || ranked[0]!.score < WEAK_SCORE)) {
     const merged = new Map(ranked.map((g) => [g.key, { ...g, score: 2 * g.score }]));
     for (const v of (await opts.expand(q)).slice(0, 3)) {
-      const more = await rankGroups(db, embedder, v, { ...opts, log: false });
+      const { groups: more } = await rankGroups(db, embedder, v, { ...opts, log: false });
       more.forEach((g, i) => {
         const m = merged.get(g.key) ?? { ...g, score: 0, trace: { ...g.trace } };
         m.score += 1 / (RRF_K + i + 1);
@@ -267,21 +321,24 @@ export async function search(db: DB, embedder: Embedder | null, q: string, opts:
     ranked = [...head, ...ranked.slice(RERANK_TOP)].sort((a, b) => b.score - a.score);
   }
 
-  const pathsFor = db.prepare("SELECT path FROM files WHERE content_hash = ? AND deleted_at IS NULL ORDER BY length(path), path");
-  const pathById = db.prepare("SELECT path FROM files WHERE id = ?");
-  return ranked.slice(0, limit).map((g) => {
-    const paths = g.key.startsWith("f:")
-      ? [(pathById.get(Number(g.key.slice(2))) as { path: string }).path]
-      : (pathsFor.all(g.key) as { path: string }[]).map((r) => r.path);
+  const cols = "id, path, kind, ext, mtime, size";
+  const filesFor = db.prepare(`SELECT ${cols} FROM files WHERE content_hash = ? AND deleted_at IS NULL ORDER BY length(path), path`);
+  const fileById = db.prepare(`SELECT ${cols} FROM files WHERE id = ?`);
+  type Row = Omit<HitFile, "name" | "folder">;
+  const hits = ranked.slice(0, limit).map((g) => {
+    const rows = (g.key.startsWith("f:") ? [fileById.get(Number(g.key.slice(2)))] : filesFor.all(g.key)) as Row[];
+    const files = rows.map((r) => ({ ...r, name: basename(r.path), folder: dirname(r.path) }));
     const c = textOf(g);
     return {
-      paths,
+      paths: files.map((f) => f.path),
+      files,
       score: Math.round(g.score * 10000) / 10000,
       snippet: c ? snippetFor(c.text, q) : "",
       page: c?.page ?? null,
       trace: g.trace,
     };
   });
+  return { hits, queryId: first.queryId };
 }
 
 interface FileFacts {

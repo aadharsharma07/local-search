@@ -143,6 +143,11 @@ export const MIGRATIONS: readonly string[] = [
   ) STRICT;
   CREATE INDEX feedback_file ON feedback(file_id);
   `,
+  /* 1 -> 2: query vectors, so files opened for similar past searches can rank higher */ `
+  ALTER TABLE queries ADD COLUMN vec BLOB;       -- Float32 query embedding, NULL without a model
+  ALTER TABLE queries ADD COLUMN vec_fp TEXT;    -- embedding fingerprint the vector was made with
+  CREATE INDEX feedback_query ON feedback(query_id);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

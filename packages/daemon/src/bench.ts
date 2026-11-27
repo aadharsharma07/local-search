@@ -11,7 +11,9 @@ export interface BenchResult {
   createdAt: string;
   machine: { platform: string; release: string; arch: string; cpu: string };
   embedder: string;
-  index: { states: Record<string, number>; chunks: number };
+  /** Whether files opened for past searches were allowed to boost results. */
+  withFeedback: boolean;
+  index: { states: Record<string, number>; chunks: number; feedback: number };
   queries: { total: number; inScope: number; outOfScope: number };
   recallAt5: number;
   mrr: number;
@@ -30,7 +32,8 @@ const q = (xs: number[], p: number) => {
  * Score the live index against a test set. Only queries whose expected file is indexed count
  * ("in scope"), so a one-folder index can be benched against the full test set.
  */
-export async function bench(db: DB, embedder: Embedder, testset: TestSet): Promise<BenchResult> {
+export async function bench(db: DB, embedder: Embedder, testset: TestSet, opts: { withFeedback?: boolean } = {}): Promise<BenchResult> {
+  const withFeedback = opts.withFeedback ?? false;
   const live = db.prepare("SELECT 1 FROM files WHERE path = ? AND deleted_at IS NULL AND state IN ('indexed', 'enriched')");
   const key = (p: string) => normalize(p).normalize("NFC");
   const inScope = testset.queries.filter((t) => t.expected.some((e) => live.get(key(e))));
@@ -39,7 +42,7 @@ export async function bench(db: DB, embedder: Embedder, testset: TestSet): Promi
   const times: number[] = [];
   for (const t of inScope) {
     const t0 = performance.now();
-    const hits = await search(db, embedder, t.q, { limit: 10 });
+    const hits = await search(db, embedder, t.q, { limit: 10, useFeedback: withFeedback });
     times.push(performance.now() - t0);
     rankings.push(hits.flatMap((h) => h.paths));
   }
@@ -51,9 +54,11 @@ export async function bench(db: DB, embedder: Embedder, testset: TestSet): Promi
     createdAt: new Date().toISOString(),
     machine: { platform: platform(), release: release(), arch: arch(), cpu: cpus()[0]?.model ?? "unknown" },
     embedder: embedder.spec.model,
+    withFeedback,
     index: {
       states: stateCounts(db),
       chunks: (db.prepare("SELECT count(*) AS n FROM chunks").get() as { n: number }).n,
+      feedback: (db.prepare("SELECT count(*) AS n FROM feedback WHERE action IN ('open', 'open_folder')").get() as { n: number }).n,
     },
     queries: { total: testset.queries.length, inScope: inScope.length, outOfScope: testset.queries.length - inScope.length },
     recallAt5: Math.round(s.recallAtK * 1000) / 1000,
@@ -75,7 +80,8 @@ export function writeBench(r: BenchResult, outDir: string): string {
     `- Queries in scope: ${r.queries.inScope} of ${r.queries.total} (the rest point at files not in this index)`,
     `- **recall@5: ${Math.round(r.recallAt5 * 1000) / 10}%** · MRR ${r.mrr}`,
     `- Latency: p50 ${r.latencyMs.p50} ms · p95 ${r.latencyMs.p95} ms · max ${r.latencyMs.max} ms`,
-    `- Index: ${JSON.stringify(r.index.states)} · ${r.index.chunks} chunks`,
+    `- Index: ${JSON.stringify(r.index.states)} · ${r.index.chunks} chunks · ${r.index.feedback} opens recorded`,
+    `- Feedback boost: ${r.withFeedback ? "on (--with-feedback)" : "off"}`,
     "",
     "Aggregate numbers only: no queries, file names or paths.",
   ].join("\n");

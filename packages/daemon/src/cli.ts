@@ -1,10 +1,13 @@
 #!/usr/bin/env node
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { bench, writeBench } from "./bench.ts";
 import { CONFIG_PATH, DATA_DIR, defaultPython, loadDaemonConfig, REPO_ROOT, type DaemonConfig } from "./config.ts";
-import { loadExpander, loadReranker } from "./embed/extras.ts";
+import { appendTests, suggestTests, why } from "./diagnose.ts";
+import { deepSearch, loadExpander, loadReranker } from "./embed/extras.ts";
+import { installStartup, removeStartup } from "./startup.ts";
 import { Indexer, startServer, writeToken } from "./serve.ts";
 import { loadTestSet } from "./shared/testset.ts";
 import { openDb } from "./db/index.ts";
@@ -13,7 +16,7 @@ import { processQueue, scan, stateCounts } from "./ingest/index.ts";
 import { search, type SearchOptions } from "./search/index.ts";
 import { WorkerClient } from "./shared/worker.ts";
 
-const HELP = `lsd — local-search daemon (Sprint 1: command line only)
+const HELP = `lsd — local-search daemon
 
 Usage:
   lsd index [--roots a,b] [--exclude x,y] [--embedder gemma|hash]
@@ -21,15 +24,20 @@ Usage:
   lsd search "<query>" [-n 10] [--explain]          Hybrid keyword + vector + filename search
   lsd status                                         File counts by state
   lsd serve                                          Long-running: localhost API + background indexing
-  lsd bench [--testset <file>] [--out <dir>]         Score the index against the test set
+  lsd bench [--testset <file>] [--out <dir>] [--with-feedback]
+                                                     Score the index against the test set
+  lsd why "<query>" <path>                           Why a file did or didn't come back (terminal only)
+  lsd testset suggest [--testset <file>]             Turn searches you opened results for into test entries
+  lsd startup install|remove                         Start lsd serve hidden at Windows logon
 
 Options:
   --db <file>        Index file (default: ~/.local-search/index.sqlite)
   --embedder <name>  gemma (default; runs a model, use on the PC) or hash (no model, keyword-level)
   --ocr <engine>     auto (default), windows, rapidocr, tesseract, or none (skip OCR entirely)
   --exclude <names>  Extra folder names to skip anywhere, added to the built-in list
+  --with-feedback    Let files opened for past searches boost results (bench ignores them by default)
 
-Settings (roots, excludeDirs, rerank, expand, port) are read from ${CONFIG_PATH}.
+Settings (roots, excludeDirs, rerank, expand, port, deepSearch, hotkey) are read from ${CONFIG_PATH}.
 `;
 
 /** Reranker and expander, loaded only when switched on in the config. */
@@ -60,6 +68,7 @@ async function main() {
       testset: { type: "string" },
       out: { type: "string" },
       ocr: { type: "string", default: "auto" },
+      "with-feedback": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -67,7 +76,53 @@ async function main() {
   if (values.help || !cmd) return console.log(HELP);
 
   mkdirSync(DATA_DIR, { recursive: true });
+
+  if (cmd === "startup") {
+    const [action] = rest;
+    if (action === "install") console.log(`Installed: ${installStartup(REPO_ROOT, DATA_DIR)}\nlsd serve starts at your next logon (log: ${join(DATA_DIR, "daemon.log")}).`);
+    else if (action === "remove") console.log(removeStartup() ? "Removed." : "Not installed.");
+    else throw new Error("Usage: lsd startup install|remove");
+    return;
+  }
+
   const db = openDb(values.db ?? join(DATA_DIR, "index.sqlite"));
+
+  if (cmd === "why") {
+    const [q, path] = rest;
+    if (!q || !path) throw new Error('Usage: lsd why "<query>" <path>');
+    const embedder = await makeEmbedder(values.embedder!);
+    const r = await why(db, embedder, q, resolve(path));
+    await embedder.close();
+    if (!r.file) console.log("Not in the index (outside the roots, excluded, or not scanned yet).");
+    else {
+      console.log(`File: ${r.file.state} · ${r.file.kind}${r.file.skipReason ? ` · skipped: ${r.file.skipReason}` : ""}${r.file.error ? ` · error: ${r.file.error}` : ""}`);
+      console.log(r.content ? `Text: ${r.content.chars} chars · ${r.content.words} words · ${r.content.chunks} chunks · ${r.content.extractor}` : "Text: none extracted");
+      console.log(r.position ? `Ranked #${r.position} (score ${r.score}, top ${r.topScore})` : "Not retrieved by any list in the top 200.");
+      if (r.trace) console.log(`Lists: ${JSON.stringify(r.trace)}`);
+    }
+    return;
+  }
+
+  if (cmd === "testset" && rest[0] === "suggest") {
+    const file = values.testset ?? join(DATA_DIR, "testset.json");
+    const existing = existsSync(file) ? loadTestSet(file).queries : [];
+    const all = suggestTests(db, existing);
+    if (!all.length) return console.log("No new suggestions: open some results from the popup first.");
+    if (!existsSync(file)) writeFileSync(file, JSON.stringify({ queries: [] }, null, 2));
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const keep: typeof all = [];
+    try {
+      for (const s of all) {
+        const a = (await rl.question(`"${s.q}" → ${s.path} (opened ${s.opens}x). Add? [y/N/q] `)).trim().toLowerCase();
+        if (a === "q") break;
+        if (a === "y") keep.push(s);
+      }
+    } finally {
+      rl.close();
+    }
+    console.log(`Added ${appendTests(file, keep)} to ${file}.`);
+    return;
+  }
 
   if (cmd === "status") {
     console.table(stateCounts(db));
@@ -102,7 +157,7 @@ async function main() {
   if (cmd === "bench") {
     const t = loadTestSet(values.testset ?? join(DATA_DIR, "testset.json"));
     const embedder = await makeEmbedder(values.embedder!);
-    const r = await bench(db, embedder, t);
+    const r = await bench(db, embedder, t, { withFeedback: values["with-feedback"] });
     await embedder.close();
     const dir = writeBench(r, values.out ?? join(REPO_ROOT, "reports"));
     console.log(`recall@5 ${Math.round(r.recallAt5 * 1000) / 10}% · MRR ${r.mrr} · ${r.queries.inScope}/${r.queries.total} queries in scope · p50 ${r.latencyMs.p50} ms`);
@@ -117,15 +172,28 @@ async function main() {
     log("loading models (kept loaded while serving)");
     const embedder = await makeEmbedder(values.embedder!);
     const searchOpts = await loadExtras(cfg);
+    // "Search harder" loads real models, so it is off with the model-free hash embedder (Mac dev).
+    const deepLoader = cfg.deepSearch && values.embedder !== "hash" ? deepSearch(join(DATA_DIR, "models")) : null;
+    const deep = deepLoader
+      ? async () => {
+          if (!deepLoader.loaded) log("search harder: loading reranker and expander");
+          return deepLoader.get();
+        }
+      : undefined;
     const indexer = new Indexer({ db, worker, embedder, cfg, log });
     const token = writeToken();
-    const { server, port } = await startServer({ db, embedder, token, port: cfg.port, indexer, searchOpts });
-    log(`listening on http://127.0.0.1:${port} · token in ${join(DATA_DIR, "token")} · rerank ${cfg.rerank ? "on" : "off"} · expand ${cfg.expand ? "on" : "off"}`);
+    const popup = { roots: cfg.roots, hotkey: cfg.hotkey };
+    const { server, port } = await startServer({ db, embedder, token, port: cfg.port, indexer, searchOpts, deep, popup });
+    log(
+      `listening on http://127.0.0.1:${port} · token in ${join(DATA_DIR, "token")} · rerank ${cfg.rerank ? "on" : "off"} · ` +
+        `expand ${cfg.expand ? "on" : "off"} · search harder ${deep ? "on demand" : "off"}`,
+    );
     indexer.start();
     const shutdown = async () => {
       indexer.stop();
       server.close();
       worker.close();
+      await deepLoader?.close();
       await embedder.close();
       process.exit(0);
     };

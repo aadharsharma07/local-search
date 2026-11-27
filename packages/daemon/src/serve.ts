@@ -1,14 +1,15 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { watch, writeFileSync, type FSWatcher } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server } from "node:http";
 import { constants, setPriority } from "node:os";
 import { join } from "node:path";
 import { DATA_DIR, type DaemonConfig } from "./config.ts";
 import type { DB } from "./db/index.ts";
 import type { Embedder } from "./embed/index.ts";
 import { processQueue, scan, stateCounts } from "./ingest/index.ts";
-import { search, type SearchOptions } from "./search/index.ts";
+import { recordFeedback, type Feedback } from "./search/feedback.ts";
+import { searchWithMeta, type SearchOptions } from "./search/index.ts";
 import type { WorkerClient } from "./shared/worker.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -148,16 +149,71 @@ export interface ServeOptions {
   token: string;
   port: number;
   indexer?: Indexer;
+  /** Always-on rerank/expand (config switches; off by default). */
   searchOpts?: Pick<SearchOptions, "rerank" | "expand">;
+  /** Rerank/expand for one "search harder" request (deep=1); loads its models on first use. */
+  deep?: () => Promise<Pick<SearchOptions, "rerank" | "expand">>;
+  /** Settings the popup needs: folders it may show thumbnails from, and its shortcut. */
+  popup?: { roots: string[]; hotkey: string };
 }
 
-/** Localhost API: GET /search?q=&n=, GET /status, POST /reindex. Bearer token required. */
+/**
+ * Origins allowed to call the API from a browser context: the Tauri popup (production webview
+ * on Windows and macOS) and its Vite dev server. Other web pages can't read the token anyway, but
+ * without CORS headers they also can't read responses.
+ */
+export const ALLOWED_ORIGINS = new Set(["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost", "http://localhost:1420"]);
+
+function readJson(req: IncomingMessage, limit = 4096): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c: string) => {
+      body += c;
+      if (body.length > limit) {
+        reject(new Error("body too large"));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(body || "null"));
+      } catch {
+        reject(new Error("invalid JSON"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+/**
+ * Localhost API. Bearer token required.
+ *   GET  /search?q=&n=&log=0|1&deep=0|1   results; log=1 records the search and returns queryId
+ *   POST /feedback {queryId, fileId, action: open|open_folder|none, rank}
+ *   GET  /status                           file counts and indexer state
+ *   GET  /config                           roots and hotkey, for the popup
+ *   POST /reindex                          start a scan-and-index pass
+ */
 export function startServer(o: ServeOptions): Promise<{ server: Server; port: number }> {
   const server = createServer(async (req, res) => {
+    const origin = req.headers.origin;
+    const cors: Record<string, string> =
+      origin && ALLOWED_ORIGINS.has(origin)
+        ? { "access-control-allow-origin": origin, vary: "Origin", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST" }
+        : {};
     const send = (code: number, body: unknown) => {
-      res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
+      if (code === 204) {
+        res.writeHead(204, cors);
+        return res.end();
+      }
+      res.writeHead(code, { "content-type": "application/json; charset=utf-8", ...cors });
       res.end(JSON.stringify(body));
     };
+    // CORS preflight carries no Authorization header; answer it before the token check.
+    if (req.method === "OPTIONS") {
+      res.writeHead(cors["access-control-allow-origin"] ? 204 : 403, cors);
+      return res.end();
+    }
     if (req.headers.authorization !== `Bearer ${o.token}`) return send(401, { error: "unauthorized" });
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     try {
@@ -166,11 +222,25 @@ export function startServer(o: ServeOptions): Promise<{ server: Server; port: nu
         if (!q) return send(400, { error: "missing q" });
         const t0 = performance.now();
         const n = Math.min(50, Math.max(1, Number(url.searchParams.get("n")) || 10));
-        const hits = await search(o.db, o.embedder, q, { limit: n, log: true, ...o.searchOpts });
-        return send(200, { q, ms: Math.round(performance.now() - t0), hits });
+        const log = url.searchParams.get("log") === "1";
+        const deep = url.searchParams.get("deep") === "1";
+        const extra = deep && o.deep ? { ...(await o.deep()), forceExpand: true } : o.searchOpts;
+        const { hits, queryId } = await searchWithMeta(o.db, o.embedder, q, { limit: n, log, ...extra });
+        return send(200, { q, ms: Math.round(performance.now() - t0), queryId, deep: deep && !!o.deep, hits });
+      }
+      if (req.method === "POST" && url.pathname === "/feedback") {
+        try {
+          recordFeedback(o.db, (await readJson(req)) as Feedback);
+        } catch (e) {
+          return send(400, { error: (e as Error).message });
+        }
+        return send(204, null);
       }
       if (req.method === "GET" && url.pathname === "/status") {
-        return send(200, { files: stateCounts(o.db), indexer: o.indexer?.state ?? "off" });
+        return send(200, { files: stateCounts(o.db), indexer: o.indexer?.state ?? "off", deep: !!o.deep });
+      }
+      if (req.method === "GET" && url.pathname === "/config") {
+        return send(200, o.popup ?? { roots: [], hotkey: "Alt+Space" });
       }
       if (req.method === "POST" && url.pathname === "/reindex") {
         void o.indexer?.run();

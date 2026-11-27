@@ -31,13 +31,25 @@ export interface DaemonConfig {
   expand: boolean;
   /** Port for `lsd serve` on 127.0.0.1. */
   port: number;
+  /** "Search harder" (Shift+Enter in the popup): rerank + expansion for one search, models loaded on demand. */
+  deepSearch: boolean;
+  /** Global shortcut that opens the popup (Tauri accelerator syntax). */
+  hotkey: string;
 }
 
 export const CONFIG_PATH = join(DATA_DIR, "config.yaml");
 
 /** Load the daemon config over the defaults. A missing file means defaults. */
 export function loadDaemonConfig(path = CONFIG_PATH): DaemonConfig {
-  const base: DaemonConfig = { roots: defaultRoots(), excludeDirs: DEFAULT_EXCLUDES, rerank: false, expand: false, port: 7337 };
+  const base: DaemonConfig = {
+    roots: defaultRoots(),
+    excludeDirs: DEFAULT_EXCLUDES,
+    rerank: false,
+    expand: false,
+    port: 7337,
+    deepSearch: true,
+    hotkey: "Alt+Space",
+  };
   if (!existsSync(path)) return base;
   const user = (parse(readFileSync(path, "utf8")) ?? {}) as Partial<DaemonConfig>;
   const expand = (p: string) => normalize(p.replace(/^~(?=$|[\\/])/, homedir()));
@@ -47,6 +59,8 @@ export function loadDaemonConfig(path = CONFIG_PATH): DaemonConfig {
     rerank: user.rerank ?? base.rerank,
     expand: user.expand ?? base.expand,
     port: user.port ?? base.port,
+    deepSearch: user.deepSearch ?? base.deepSearch,
+    hotkey: user.hotkey ?? base.hotkey,
   };
 }
 
