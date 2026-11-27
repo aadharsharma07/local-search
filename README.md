@@ -3,10 +3,11 @@
 A private, on-device replacement for Windows Search: ask in plain words, get the file back in under
 a second. Nothing leaves the PC. Personal project; see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status: Sprint 2 done.** Built: index schema, extraction worker, field kit, query planner and
-hybrid search, and `lsd serve` (localhost API, background indexing). Commands:
-`pnpm lsd index | search | bench | serve`. Decisions: [docs/DECISIONS.md](docs/DECISIONS.md);
-schedule: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Next: Sprint 3 (search popup).
+**Status: Sprint 3 done, Visit 2 next.** Built: index schema, extraction worker, field kit, query
+planner and hybrid search, `lsd serve` (localhost API, background indexing), the search popup, and
+learning from which results you open. Commands: `pnpm lsd index | search | bench | serve | why |
+testset suggest | startup`. Decisions: [docs/DECISIONS.md](docs/DECISIONS.md); schedule:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); next visit: [docs/FIELD-VISIT.md](docs/FIELD-VISIT.md).
 
 ## Layout
 
@@ -17,7 +18,7 @@ schedule: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Next: Sprint 3 (search p
 | `worker` | Python extraction worker (PDF, docx, text, code, OCR). |
 | `fixtures` | Synthetic corpus, retrieval queries and Laya facet labels. All invented. |
 | `reports` | Field kit reports. Written on the PC and gitignored: they never leave it. |
-| `ui` | Search popup (Sprint 3). |
+| `ui` | Search popup: Tauri window on a global hotkey. See [ui/README.md](ui/README.md). |
 
 ## Develop (Mac)
 

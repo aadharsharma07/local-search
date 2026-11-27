@@ -19,7 +19,9 @@ version that lives next to the code.
   (a low-priority background queue that pauses while the GPU is busy) and queries.
 - **Python extraction worker** (`worker/`): JSON lines over stdio, one file per request. No database
   access. The daemon times out, kills and restarts it on poison files.
-- **Search popup** (`ui/`, Sprint 3): Tauri window on a global hotkey.
+- **Search popup** (`ui/`): Tauri window on a global hotkey (Alt+Space by default). Talks to the
+  daemon's API, shows image thumbnails, opens files or their folder, and reports which result was
+  opened. Starts at logon with a tray icon; `lsd startup install` does the same for the daemon.
 - **Platform layer**: Windows adapter (Zone.Identifier, cloud placeholder attributes, Windows OCR,
   Everything) and a macOS adapter for development.
 
@@ -36,11 +38,13 @@ Decisions and their reasons are in [DECISIONS.md](DECISIONS.md).
 1. **Plan** (`packages/daemon/src/planner`): match terms (stemmed, filler removed, weighted by
    rarity in the index), a time window, recency, file type, screenshot and origin. Model-free.
 2. **Retrieve**: keyword (FTS5/BM25), vector (embeddinggemma, the only resident model) and
-   file/folder name lists, fused with RRF.
+   file/folder name lists, plus files opened for the same or a similar past search (half weight),
+   fused with RRF.
 3. **Adjust** by the plan: time fit from the content date or modified time, newest/oldest first
    among close matches, small type/screenshot/origin boosts. Nothing is filtered.
-4. **Optional, off by default**: query expansion when the first results are weak (fused with the
-   original at 2x weight) and reranking of the top five.
+4. **Search harder, on request** (Shift+Enter in the popup): query expansion fused with the
+   original at 2x weight, then reranking of the top five. Both models load on first use and unload
+   after 10 idle minutes. Config switches can also turn them on for every search (off by default).
 
 ## Schedule
 
@@ -51,8 +55,9 @@ Development follows the visits, because only the PC can answer the open question
 | Before Visit 1 (done) | Schema, worker, field kit (S1–S7, S4b), `lsd index / search / bench`, CI dry run |
 | Visit 1 | Field kit, private test set, one-folder index + bench. Decide: embedder, OCR engine, facet routing, expansion, rerank size |
 | Sprint 2 (done) | Query planner (dates, recency, type, origin); rarity-weighted terms; re-extract on upgrades; `lsd serve` with background index queue, resident embedder and localhost API; rerank/expansion switches (off). Everything integration dropped |
-| Visit 2 | Full index; bench vs qmd; tune |
-| Sprint 3 | Tauri popup (built on the Mac against a model-free dev index); feedback; category tree and receipt fields (generated on the PC) |
+| Sprint 3 (done) | Tauri popup (built on the Mac against a model-free dev index, Windows installer from CI); feedback from opens feeds ranking; search harder on demand; `lsd why`, `lsd testset suggest`, `lsd startup` |
+| Visit 2 | Install popup and startup; grow the test set to 25+ searches; bench with and without feedback; diagnose the image miss; watch the GPU pause during a game |
+| Sprint 4 | Decided by Visit 2: category tree and receipt fields (4B model, generated on the PC) if the bigger test set shows searches that need them; image misses |
 | Visits 3–4 | Daily use and tuning |
 
 ## Development model

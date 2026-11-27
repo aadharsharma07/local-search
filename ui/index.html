@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>local-search</title>
+  </head>
+  <body>
+    <main>
+      <input id="q" type="search" placeholder="Find a file…" autocomplete="off" spellcheck="false" aria-label="Search" aria-controls="results" />
+      <div id="note" hidden></div>
+      <ul id="results" role="listbox" aria-label="Results"></ul>
+      <footer>
+        <span id="status"></span>
+        <span class="keys"><kbd>Enter</kbd> open · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> folder · <kbd>Shift</kbd>+<kbd>Enter</kbd> search harder</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

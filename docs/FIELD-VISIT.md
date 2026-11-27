@@ -119,6 +119,76 @@ re-embeds automatically.
 - Write the decisions each spike settles (see the table below) in your own words, without machine
   details, file counts or folder names, and commit that.
 
+## Visit 2 (after Sprint 3, about 2 hours)
+
+Before leaving: open GitHub → Actions → **popup build**, run it if the latest run is older than the
+last change to `ui/`, and check it's green. Its artifact **local-search-popup-windows** holds the
+installer.
+
+1. **Update** (PowerShell, in the repo):
+
+   ```powershell
+   git pull
+   pnpm install
+   pnpm typecheck; pnpm test
+   ```
+
+   The index upgrades itself (schema v2) the first time the daemon opens it.
+
+2. **Baseline bench** on the full index, before anything new is used:
+
+   ```powershell
+   pnpm lsd index
+   pnpm lsd bench
+   ```
+
+3. **Grow the test set** to 25 or more searches (Visit 1 has 8). Follow the mix in step 2 above, and
+   add at least 5 searches for images. `pnpm fieldkit testset check` must say "Ready". Bench again:
+   this is the number later sprints tune against.
+
+4. **Diagnose the image miss** and any new misses:
+
+   ```powershell
+   pnpm lsd why "<the search>" "<the file it should find>"
+   ```
+
+   It prints the file's state, how much text it has, and where it ranked in each list. Output
+   stays in the terminal; note the cause in your own words (for example "OCR text misspells the
+   key word" or "no text and the name doesn't match").
+
+5. **Start the daemon at logon and install the popup:**
+
+   ```powershell
+   pnpm lsd startup install
+   ```
+
+   Sign out and back in (or run `pnpm lsd serve` once by hand), then run the installer from the
+   artifact. Press **Alt+Space**. If another app uses that shortcut, set `hotkey:` in
+   `%USERPROFILE%\.local-search\config.yaml` (for example `Ctrl+Alt+Space`) and restart the daemon.
+
+6. **Watch the GPU pause:** start a game. Within a minute the popup's status line should say
+   "indexing paused while the GPU is busy" (only while files are being indexed; touch a few files
+   in Documents to give it work).
+
+7. **Use it for real** for the rest of the visit: search with the popup instead of Explorer. Try
+   **Shift+Enter** (search harder) on a few searches and note how long the first one takes (it
+   loads two models) and the ones after.
+
+8. **Before leaving:**
+
+   ```powershell
+   pnpm lsd testset suggest          # turn what you opened into test entries, one by one
+   pnpm lsd bench
+   pnpm lsd bench --with-feedback
+   ```
+
+   Compare the two benches: the difference is what learning from opens adds. Zip `reports\`,
+   `%USERPROFILE%\.local-search\config.yaml` and `testset.json` for the Mac as after Visit 1 (never
+   into the repo).
+
+What Visit 2 decides: whether Sprint 4 builds the category tree and receipt fields, whether images
+need more than metadata, the feedback weight, and whether search harder is worth keeping.
+
 ## What each spike decides
 
 | Spike | Measures | Pass if | Decides |
